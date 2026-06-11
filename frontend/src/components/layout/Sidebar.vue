@@ -5,55 +5,34 @@
     </div>
     <el-menu
       :default-active="activeMenu"
+      :default-openeds="openedMenus"
       router
       background-color="#1d1e2c"
       text-color="#bfcbd9"
       active-text-color="#409eff"
     >
-      <el-menu-item
-        v-for="item in menuRoutes"
+      <SidebarItem
+        v-for="item in menuConfig"
         :key="item.path"
-        :index="'/' + item.path"
-      >
-        <el-icon><component :is="iconMap[item.meta?.icon as string]" /></el-icon>
-        <span>{{ item.meta?.title }}</span>
-      </el-menu-item>
+        :item="item"
+      />
     </el-menu>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, markRaw } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
-import {
-  Odometer,
-  Files,
-  Edit,
-  Cpu,
-  VideoPlay,
-  MagicStick,
-  DataAnalysis,
-} from '@element-plus/icons-vue'
-
-const iconMap: Record<string, unknown> = {
-  Odometer: markRaw(Odometer),
-  Files: markRaw(Files),
-  Edit: markRaw(Edit),
-  Cpu: markRaw(Cpu),
-  VideoPlay: markRaw(VideoPlay),
-  MagicStick: markRaw(MagicStick),
-  DataAnalysis: markRaw(DataAnalysis),
-}
+import { computed } from 'vue'
+import { useRoute } from 'vue-router'
+import { menuConfig } from '@/config/menu'
+import SidebarItem from './SidebarItem.vue'
 
 const route = useRoute()
-const router = useRouter()
 
-const menuRoutes = computed(() => {
-  const root = router.options.routes[0]
-  return root?.children || []
-})
+const activeMenu = computed(() => route.path)
 
-const activeMenu = computed(() => '/' + (route.path.split('/')[1] || 'dashboard'))
+const openedMenus = computed(() =>
+  menuConfig.filter((m) => m.children?.length).map((m) => m.path)
+)
 </script>
 
 <style scoped>

@@ -7,6 +7,7 @@
       <el-header class="header-container">
         <Header />
       </el-header>
+      <TagsView />
       <el-main class="main-container">
         <router-view />
       </el-main>
@@ -15,8 +16,21 @@
 </template>
 
 <script setup lang="ts">
+import { watch } from 'vue'
+import { useRoute } from 'vue-router'
 import Sidebar from './Sidebar.vue'
 import Header from './Header.vue'
+import TagsView from './TagsView.vue'
+import { useTagsStore } from '@/stores/tags'
+
+const route = useRoute()
+const tagsStore = useTagsStore()
+
+watch(
+  () => route.path,
+  () => tagsStore.addTag(route),
+  { immediate: true }
+)
 </script>
 
 <style scoped>
@@ -35,6 +49,7 @@ import Header from './Header.vue'
   display: flex;
   align-items: center;
   padding: 0 20px;
+  height: 50px;
 }
 
 .main-container {

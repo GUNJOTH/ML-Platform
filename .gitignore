@@ -10,6 +10,7 @@ venv/
 # Node
 node_modules/
 dist/
+.vite/
 YOLOconstructionSiteSeftyDetector/
 
 # Environment
@@ -34,7 +35,8 @@ Thumbs.db
 .coverage
 htmlcov/
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
-# Build
-*.egg
-*.whl
+# Logs
+*.log

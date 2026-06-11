@@ -1,8 +1,12 @@
 import axios from 'axios'
 import type { AxiosInstance, AxiosResponse } from 'axios'
 
+const baseURL = import.meta.env.VITE_API_BASE_URL
+  ? `${import.meta.env.VITE_API_BASE_URL}/api/v1`
+  : '/api/v1'
+
 const request: AxiosInstance = axios.create({
-  baseURL: '/api/v1',
+  baseURL,
   timeout: 30000,
 })
 

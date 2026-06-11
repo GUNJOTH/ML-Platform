@@ -1,7 +1,5 @@
-from fastapi import APIRouter, Depends, UploadFile, File
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, UploadFile, File
 
-from app.deps import get_db
 from app.schemas.upload import UploadResponse
 from app.services.upload import UploadService
 

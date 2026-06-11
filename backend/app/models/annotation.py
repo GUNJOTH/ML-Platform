@@ -17,3 +17,4 @@ class Annotation(UUIDMixin, TimestampMixin, Base):
     data: Mapped[dict] = mapped_column(JSON, nullable=False)
 
     image: Mapped["Image"] = relationship(back_populates="annotations")  # noqa: F821
+    label: Mapped["Label"] = relationship()  # noqa: F821

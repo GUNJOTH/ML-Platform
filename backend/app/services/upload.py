@@ -9,18 +9,18 @@ logger = logging.getLogger(__name__)
 ALLOWED_IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".webp"}
 ALLOWED_MODEL_EXTS = {".pt", ".pth", ".onnx", ".torchscript"}
 ALLOWED_ARCHIVE_EXTS = {".zip", ".tar", ".tar.gz", ".tgz"}
-MAX_FILE_SIZE = 500 * 1024 * 1024  # 500MB
 
 
 class UploadService:
     def __init__(self) -> None:
         self.storage = get_storage()
+        self.max_size = settings.max_upload_size_mb * 1024 * 1024
 
     async def save_dataset_archive(self, filename: str, content: bytes) -> str:
         ext = Path(filename).suffix.lower()
         if ext not in ALLOWED_ARCHIVE_EXTS:
             raise ValueError(f"Unsupported archive format: {ext}")
-        if len(content) > MAX_FILE_SIZE:
+        if len(content) > self.max_size:
             raise ValueError("File too large")
 
         save_path = f"uploads/datasets/{filename}"
@@ -32,7 +32,7 @@ class UploadService:
         ext = Path(filename).suffix.lower()
         if ext not in ALLOWED_MODEL_EXTS:
             raise ValueError(f"Unsupported model format: {ext}")
-        if len(content) > MAX_FILE_SIZE:
+        if len(content) > self.max_size:
             raise ValueError("File too large")
 
         save_path = f"uploads/models/{filename}"

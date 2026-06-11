@@ -25,6 +25,7 @@ class Settings(BaseSettings):
 
     storage_backend: str = "local"
     storage_root: str = "./storage"
+    max_upload_size_mb: int = 500
 
     @property
     def postgres_url(self) -> str:
