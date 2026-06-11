@@ -1,0 +1,15 @@
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.task import Task
+from app.repositories.base import BaseRepository
+
+
+class TaskRepository(BaseRepository[Task]):
+    def __init__(self, session: AsyncSession) -> None:
+        super().__init__(session, Task)
+
+    async def list_by_status(self, status: str, offset: int = 0, limit: int = 20) -> list[Task]:
+        stmt = select(Task).where(Task.status == status).offset(offset).limit(limit)
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
