@@ -8,6 +8,7 @@ export interface MLModel {
   model_size_mb: number | null
   parameters: string | null
   status: string
+  model_source: string
   dataset_id: string | null
   metrics: Record<string, unknown> | null
   created_at: string

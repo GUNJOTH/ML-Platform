@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     doris_password: str = ""
 
     storage_backend: str = "local"
-    storage_root: str = "./storage"
+    storage_root: str = "E:/pythonas/plat/storage"
     max_upload_size_mb: int = 500
 
     @property
@@ -49,7 +49,10 @@ class Settings(BaseSettings):
     def storage_path(self) -> Path:
         return Path(self.storage_root)
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+    model_config = {
+        "env_file": Path(__file__).resolve().parent.parent / ".env",
+        "env_file_encoding": "utf-8",
+    }
 
 
 settings = Settings()

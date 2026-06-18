@@ -4,6 +4,8 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from app.models.task import TaskStatus
+
 
 class TaskCreate(BaseModel):
     name: str
@@ -17,7 +19,7 @@ class TaskResponse(BaseModel):
     id: uuid.UUID
     name: str
     task_type: str
-    status: str
+    status: TaskStatus
     model_id: uuid.UUID | None
     dataset_id: uuid.UUID | None
     config: dict[str, Any] | None

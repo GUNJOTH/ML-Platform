@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.annotation import Annotation
@@ -15,3 +15,8 @@ class AnnotationRepository(BaseRepository[Annotation]):
         stmt = select(Annotation).where(Annotation.image_id == image_id)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
+
+    async def delete_by_image(self, image_id: uuid.UUID) -> None:
+        stmt = delete(Annotation).where(Annotation.image_id == image_id)
+        await self.session.execute(stmt)
+        await self.session.flush()

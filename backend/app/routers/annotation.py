@@ -4,7 +4,13 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.deps import get_db
-from app.schemas.annotation import AnnotationBatchCreate, AnnotationCreate, AnnotationResponse, AnnotationUpdate
+from app.exceptions import NotFoundError
+from app.schemas.annotation import (
+    AnnotationBatchCreate,
+    AnnotationCreate,
+    AnnotationResponse,
+    AnnotationUpdate,
+)
 from app.services.annotation import AnnotationService
 
 router = APIRouter(tags=["annotations"])
@@ -36,8 +42,6 @@ async def update_annotation(
 ):
     entity = await service.update_annotation(annotation_id, data)
     if not entity:
-        from app.exceptions import NotFoundError
-
         raise NotFoundError("Annotation not found")
     return entity
 
@@ -48,8 +52,6 @@ async def delete_annotation(
 ):
     deleted = await service.delete_annotation(annotation_id)
     if not deleted:
-        from app.exceptions import NotFoundError
-
         raise NotFoundError("Annotation not found")
 
 
@@ -63,4 +65,4 @@ async def batch_create_annotations(
     data: AnnotationBatchCreate,
     service: AnnotationService = Depends(get_service),
 ):
-    return await service.batch_create(data.annotations)
+    return await service.replace_for_image(image_id, data.annotations)

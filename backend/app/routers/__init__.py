@@ -9,6 +9,7 @@ from app.routers.stats import router as stats_router
 from app.routers.upload import router as upload_router
 from app.routers.inference import router as inference_router
 from app.routers.evaluation import router as evaluation_router
+from app.routers.ws import router as ws_router
 
 api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(dataset_router)
@@ -20,3 +21,4 @@ api_router.include_router(stats_router)
 api_router.include_router(upload_router)
 api_router.include_router(inference_router)
 api_router.include_router(evaluation_router)
+api_router.include_router(ws_router)

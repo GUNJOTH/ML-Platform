@@ -1,53 +1,75 @@
 <template>
   <div class="label-panel">
-    <h4>类别</h4>
-    <div class="label-list">
-      <div class="label-item" v-for="label in labels" :key="label.id">
-        <span class="label-color" :style="{ backgroundColor: label.color }"></span>
-        <span>{{ label.name }}</span>
-      </div>
+    <h4>类别标签</h4>
+    <div
+      v-for="label in labels"
+      :key="label.id"
+      class="label-item"
+      :class="{ active: label.id === selectedLabelId }"
+      @click="emit('select', label)"
+    >
+      <span class="color-dot" :style="{ background: label.color }" />
+      <span class="label-name">{{ label.name }}</span>
     </div>
-    <el-divider />
-    <h4>标注列表</h4>
-    <div class="annotation-list">
-      <p class="empty-hint">暂无标注</p>
-    </div>
+    <p v-if="labels.length === 0" class="empty">暂无类别</p>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
-
-interface Label {
+interface LabelItem {
   id: string
   name: string
   color: string
 }
 
-const labels = ref<Label[]>([])
+defineProps<{
+  labels: LabelItem[]
+  selectedLabelId: string
+}>()
+
+const emit = defineEmits<{
+  select: [label: LabelItem]
+}>()
 </script>
 
 <style scoped>
-.label-panel h4 {
-  margin: 0 0 8px 0;
+h4 {
+  margin: 0 0 12px 0;
   font-size: 14px;
+  color: #333;
 }
 
 .label-item {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 4px 0;
+  padding: 8px 10px;
+  border-radius: 4px;
   cursor: pointer;
+  transition: background 0.2s;
 }
 
-.label-color {
-  width: 14px;
-  height: 14px;
+.label-item:hover {
+  background: #f0f2f5;
+}
+
+.label-item.active {
+  background: #ecf5ff;
+  border: 1px solid #409eff;
+}
+
+.color-dot {
+  width: 12px;
+  height: 12px;
   border-radius: 2px;
+  flex-shrink: 0;
 }
 
-.empty-hint {
+.label-name {
+  font-size: 13px;
+}
+
+.empty {
   color: #999;
   font-size: 12px;
   text-align: center;

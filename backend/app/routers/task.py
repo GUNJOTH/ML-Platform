@@ -1,9 +1,12 @@
 import uuid
+from typing import Any
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.deps import get_db
+from app.exceptions import NotFoundError
+from app.schemas.model import MLModelResponse
 from app.schemas.task import TaskCreate, TaskResponse
 from app.services.task import TaskService
 
@@ -16,10 +19,12 @@ def get_service(db: AsyncSession = Depends(get_db)) -> TaskService:
 
 @router.get("", response_model=list[TaskResponse])
 async def list_tasks(
-    page: int = 1, page_size: int = 20, service: TaskService = Depends(get_service)
+    page: int = 1,
+    page_size: int = 20,
+    task_type: str | None = None,
+    service: TaskService = Depends(get_service),
 ):
-    offset = (page - 1) * page_size
-    return await service.list_tasks(offset=offset, limit=page_size)
+    return await service.list_tasks(offset=(page - 1) * page_size, limit=page_size, task_type=task_type)
 
 
 @router.post("", response_model=TaskResponse, status_code=201)
@@ -31,17 +36,68 @@ async def create_task(data: TaskCreate, service: TaskService = Depends(get_servi
 async def get_task(task_id: uuid.UUID, service: TaskService = Depends(get_service)):
     entity = await service.get_task(task_id)
     if not entity:
-        from app.exceptions import NotFoundError
-
         raise NotFoundError("Task not found")
     return entity
 
 
 @router.post("/{task_id}/cancel", response_model=TaskResponse)
-async def cancel_task(task_id: uuid.UUID, service: TaskService = Depends(get_service)):
+async def cancel_task(
+    task_id: uuid.UUID, service: TaskService = Depends(get_service)
+):
     entity = await service.cancel_task(task_id)
     if not entity:
-        from app.exceptions import NotFoundError
-
         raise NotFoundError("Task not found")
     return entity
+
+
+@router.post("/{task_id}/start", response_model=TaskResponse)
+async def start_task(
+    task_id: uuid.UUID, service: TaskService = Depends(get_service)
+):
+    entity = await service.start_task(task_id)
+    if not entity:
+        raise NotFoundError("Task not found")
+    return entity
+
+
+@router.get("/{task_id}/progress")
+async def get_task_progress(
+    task_id: uuid.UUID, service: TaskService = Depends(get_service)
+) -> dict[str, Any]:
+    return await service.get_progress(task_id)
+
+
+@router.post("/{task_id}/sync", response_model=TaskResponse)
+async def sync_task_result(
+    task_id: uuid.UUID, service: TaskService = Depends(get_service)
+):
+    entity = await service.sync_result(task_id)
+    if not entity:
+        raise NotFoundError("Task not found")
+    return entity
+
+
+@router.delete("/{task_id}", status_code=204)
+async def delete_task(
+    task_id: uuid.UUID, service: TaskService = Depends(get_service)
+):
+    deleted = await service.delete_task(task_id)
+    if not deleted:
+        raise NotFoundError("Task not found")
+
+
+@router.get("/{task_id}/history")
+async def get_task_history(
+    task_id: uuid.UUID, service: TaskService = Depends(get_service)
+) -> list[dict[str, Any]]:
+    return await service.get_history(task_id)
+
+
+@router.post("/{task_id}/export-model", response_model=MLModelResponse)
+async def export_task_model(
+    task_id: uuid.UUID, service: TaskService = Depends(get_service)
+):
+    model = await service.export_model(task_id)
+    if not model:
+        raise NotFoundError("Task not found or no weight to export")
+    return model

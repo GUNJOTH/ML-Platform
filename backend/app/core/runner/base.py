@@ -14,3 +14,7 @@ class TaskRunner(ABC):
     @abstractmethod
     async def get_progress(self, task_id: str) -> int:
         ...
+
+    @abstractmethod
+    async def get_result(self, task_id: str) -> dict[str, Any] | None:
+        ...

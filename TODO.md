@@ -8,9 +8,9 @@
 | 2 | 用户管理后端 | menu 有 /system/users 但后端无 user router/service/model | 待处理 |
 | 3 | 标注批次后端 | 前端有 BatchList 但后端无 AnnotationBatch 表和接口 | 待处理 |
 | 4 | 预处理任务后端 | 前端有 PreprocessList 但后端无对应逻辑 | 待处理 |
-| 5 | Alembic 初始迁移 | versions/ 为空，数据库表无法创建 | 待处理 |
-| 6 | YOLOv8 框架适配 | frameworks/yolov8/ 是空壳 | 待处理 |
-| 7 | Canvas 标注实现 | useCanvas.ts 为空，无法画 BBox | 待处理 |
+| 5 | Alembic 初始迁移 | versions/ 为空，数据库表无法创建 | 已处理 |
+| 6 | YOLOv8 框架适配 | frameworks/yolov8/ 是空壳 | 已处理 |
+| 7 | Canvas 标注实现 | useCanvas.ts 为空，无法画 BBox | 已处理 |
 | 8 | Docker 部署 | 无 docker-compose.yml | 待处理 |
 
 ## 中等（功能不完整）
@@ -18,11 +18,11 @@
 | # | 缺失项 | 说明 | 状态 |
 |---|--------|------|------|
 | 9 | 全局 exception handler | main.py 未注册异常处理器 | 待处理 |
-| 10 | WebSocket 进度推送 | 训练进度无实时推送机制 | 待处理 |
+| 10 | WebSocket 进度推送 | 训练进度无实时推送机制 | 已处理 |
 | 11 | 结构化日志配置 | 无全局 logging 配置，无 JSON 输出 | 待处理 |
-| 12 | TaskRunner 执行逻辑 | SyncRunner 什么都不做，create_task 不触发 runner | 待处理 |
+| 12 | TaskRunner 执行逻辑 | SyncRunner 什么都不做，create_task 不触发 runner | 已处理 |
 | 13 | stats router 真实统计 | 当前返回硬编码字符串 | 待处理 |
-| 14 | Inference/Evaluation 实现 | Service 仅打日志，不做实际推理/评估 | 待处理 |
+| 14 | Inference/Evaluation 实现 | Service 仅打日志，不做实际推理/评估 | 已处理 |
 | 15 | 后端测试用例 | tests/ 目录无实际测试 | 待处理 |
 | 16 | 前端登录页面 | 无 /login 路由和 Login.vue | 待处理 |
 | 17 | 前端 404 页面 | 无 catchall 路由，访问无效路径白屏 | 待处理 |

@@ -13,3 +13,14 @@ class TaskRepository(BaseRepository[Task]):
         stmt = select(Task).where(Task.status == status).offset(offset).limit(limit)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
+
+    async def list_by_type(self, task_type: str, offset: int = 0, limit: int = 20) -> list[Task]:
+        stmt = (
+            select(Task)
+            .where(Task.task_type == task_type)
+            .order_by(Task.created_at.desc())
+            .offset(offset)
+            .limit(limit)
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())

@@ -16,3 +16,6 @@ class SyncRunner(TaskRunner):
 
     async def get_progress(self, task_id: str) -> int:
         return 0
+
+    async def get_result(self, task_id: str) -> dict[str, Any] | None:
+        return None

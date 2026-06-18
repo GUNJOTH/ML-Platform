@@ -1,7 +1,7 @@
 import request from './request'
 import type { Task } from '@/types/task'
 
-export function getTasks(params?: { page?: number; page_size?: number }) {
+export function getTasks(params?: { page?: number; page_size?: number; task_type?: string }) {
   return request.get<never, Task[]>('/tasks', { params })
 }
 
@@ -21,4 +21,32 @@ export function createTask(data: {
 
 export function cancelTask(id: string) {
   return request.post<never, Task>(`/tasks/${id}/cancel`)
+}
+
+export function startTask(id: string) {
+  return request.post<never, Task>(`/tasks/${id}/start`)
+}
+
+export function syncTask(id: string) {
+  return request.post<never, Task>(`/tasks/${id}/sync`)
+}
+
+export function deleteTask(id: string) {
+  return request.delete(`/tasks/${id}`)
+}
+
+export function getTaskHistory(id: string) {
+  return request.get<never, Array<{ epoch: number; train_loss?: number; map50?: number; map50_95?: number }>>(`/tasks/${id}/history`)
+}
+
+export function exportTaskModel(id: string) {
+  return request.post(`/tasks/${id}/export-model`)
+}
+
+export function getTaskProgress(id: string) {
+  return request.get<never, { task_id: string; progress: number }>(`/tasks/${id}/progress`)
+}
+
+export function listDatasets() {
+  return request.get<never, Array<{ id: string; name: string }>>('/datasets')
 }

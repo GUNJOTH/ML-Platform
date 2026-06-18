@@ -17,5 +17,6 @@ class MLModel(UUIDMixin, TimestampMixin, Base):
     model_size_mb: Mapped[float | None] = mapped_column(Float)
     parameters: Mapped[str | None] = mapped_column(String(50))
     status: Mapped[str] = mapped_column(String(20), default="ready")
+    model_source: Mapped[str] = mapped_column(String(20), default="pretrained")
     dataset_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("datasets.id"))
     metrics: Mapped[dict | None] = mapped_column(JSON)

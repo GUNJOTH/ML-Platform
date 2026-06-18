@@ -19,3 +19,13 @@ class ValidationError(AppException):
 class ConflictError(AppException):
     def __init__(self, detail: str = "Resource conflict") -> None:
         super().__init__(status_code=status.HTTP_409_CONFLICT, detail=detail)
+
+
+class InferenceError(AppException):
+    def __init__(self, detail: str = "Inference failed") -> None:
+        super().__init__(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=detail)
+
+
+class TaskStateError(AppException):
+    def __init__(self, detail: str = "Invalid task state transition") -> None:
+        super().__init__(status_code=status.HTTP_409_CONFLICT, detail=detail)

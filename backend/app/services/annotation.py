@@ -48,3 +48,14 @@ class AnnotationService:
             entity = await self.create_annotation(item)
             results.append(entity)
         return results
+
+    async def replace_for_image(
+        self, image_id: uuid.UUID, items: list[AnnotationCreate]
+    ) -> list[Annotation]:
+        """Delete all existing annotations for an image, then create new ones."""
+        await self.repo.delete_by_image(image_id)
+        results = []
+        for item in items:
+            entity = await self.create_annotation(item)
+            results.append(entity)
+        return results

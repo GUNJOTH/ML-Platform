@@ -1,17 +1,15 @@
 import request from './request'
 
-export function runInference(data: {
-  model_id: string
-  confidence?: number
-  iou_threshold?: number
-}) {
-  return request.post('/inference', data)
+export interface InferenceDetection {
+  label: string
+  confidence: number
+  bbox: { x: number; y: number; width: number; height: number }
 }
 
-export function runEvaluation(data: {
-  model_id: string
-  dataset_id: string
-  iou_threshold?: number
-}) {
-  return request.post('/evaluation', data)
+export function runInference(data: { model_id: string; image_path: string }) {
+  return request.post<never, InferenceDetection[]>('/inference/run', data)
+}
+
+export function runEvaluation(data: { model_id: string; dataset_id: string }) {
+  return request.post('/evaluation/run', data)
 }

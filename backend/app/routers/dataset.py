@@ -1,10 +1,19 @@
 import uuid
+from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, File, UploadFile
+from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.deps import get_db
-from app.schemas.dataset import DatasetCreate, DatasetResponse, DatasetUpdate, ImageResponse
+from app.exceptions import NotFoundError
+from app.schemas.dataset import (
+    DatasetCreate,
+    DatasetResponse,
+    DatasetUpdate,
+    ImageResponse,
+)
+from app.services.annotation_export import AnnotationExportService
 from app.services.dataset import DatasetService
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
@@ -18,43 +27,44 @@ def get_service(db: AsyncSession = Depends(get_db)) -> DatasetService:
 async def list_datasets(
     page: int = 1, page_size: int = 20, service: DatasetService = Depends(get_service)
 ):
-    offset = (page - 1) * page_size
-    return await service.list_datasets(offset=offset, limit=page_size)
+    return await service.list_datasets(offset=(page - 1) * page_size, limit=page_size)
 
 
 @router.post("", response_model=DatasetResponse, status_code=201)
-async def create_dataset(data: DatasetCreate, service: DatasetService = Depends(get_service)):
+async def create_dataset(
+    data: DatasetCreate, service: DatasetService = Depends(get_service)
+):
     return await service.create_dataset(data)
 
 
 @router.get("/{dataset_id}", response_model=DatasetResponse)
-async def get_dataset(dataset_id: uuid.UUID, service: DatasetService = Depends(get_service)):
+async def get_dataset(
+    dataset_id: uuid.UUID, service: DatasetService = Depends(get_service)
+):
     entity = await service.get_dataset(dataset_id)
     if not entity:
-        from app.exceptions import NotFoundError
-
         raise NotFoundError("Dataset not found")
     return entity
 
 
 @router.put("/{dataset_id}", response_model=DatasetResponse)
 async def update_dataset(
-    dataset_id: uuid.UUID, data: DatasetUpdate, service: DatasetService = Depends(get_service)
+    dataset_id: uuid.UUID,
+    data: DatasetUpdate,
+    service: DatasetService = Depends(get_service),
 ):
     entity = await service.update_dataset(dataset_id, data)
     if not entity:
-        from app.exceptions import NotFoundError
-
         raise NotFoundError("Dataset not found")
     return entity
 
 
 @router.delete("/{dataset_id}", status_code=204)
-async def delete_dataset(dataset_id: uuid.UUID, service: DatasetService = Depends(get_service)):
+async def delete_dataset(
+    dataset_id: uuid.UUID, service: DatasetService = Depends(get_service)
+):
     deleted = await service.delete_dataset(dataset_id)
     if not deleted:
-        from app.exceptions import NotFoundError
-
         raise NotFoundError("Dataset not found")
 
 
@@ -65,5 +75,56 @@ async def list_dataset_images(
     page_size: int = 50,
     service: DatasetService = Depends(get_service),
 ):
-    offset = (page - 1) * page_size
-    return await service.get_images(dataset_id, offset=offset, limit=page_size)
+    return await service.get_images(
+        dataset_id, offset=(page - 1) * page_size, limit=page_size
+    )
+
+
+@router.post("/{dataset_id}/upload-zip")
+async def upload_dataset_zip(
+    dataset_id: uuid.UUID,
+    file: UploadFile = File(...),
+    service: DatasetService = Depends(get_service),
+) -> dict[str, Any]:
+    content = await file.read()
+    return await service.upload_dataset_zip(dataset_id, content)
+
+
+@router.get("/{dataset_id}/detect")
+async def detect_dataset_structure(
+    dataset_id: uuid.UUID, service: DatasetService = Depends(get_service)
+) -> dict[str, Any]:
+    return await service.detect_dataset_structure(dataset_id)
+
+
+@router.post("/{dataset_id}/confirm-import", response_model=DatasetResponse)
+async def confirm_dataset_import(
+    dataset_id: uuid.UUID,
+    payload: dict[str, Any],
+    service: DatasetService = Depends(get_service),
+):
+    return await service.import_dataset(dataset_id, payload)
+
+
+@router.get("/images/{image_id}/file")
+async def get_image_file(
+    image_id: uuid.UUID, service: DatasetService = Depends(get_service)
+):
+    resolved = await service.get_image_file_path(image_id)
+    if not resolved:
+        raise NotFoundError("Image file not found")
+    return FileResponse(path=resolved, media_type="image/jpeg")
+
+
+@router.post("/{dataset_id}/export-annotated", response_model=DatasetResponse)
+async def export_annotated_dataset(
+    dataset_id: uuid.UUID,
+    payload: dict[str, Any],
+    db: AsyncSession = Depends(get_db),
+):
+    export_service = AnnotationExportService(db)
+    return await export_service.export_dataset(
+        source_dataset_id=dataset_id,
+        annotations=payload.get("annotations", {}),
+        mode=payload.get("mode", "new"),
+    )

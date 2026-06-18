@@ -31,6 +31,7 @@ class MLModelResponse(BaseModel):
     model_size_mb: float | None
     parameters: str | None
     status: str
+    model_source: str
     dataset_id: uuid.UUID | None
     metrics: dict[str, Any] | None
     created_at: datetime

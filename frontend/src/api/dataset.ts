@@ -1,5 +1,5 @@
 import request from './request'
-import type { Dataset } from '@/types/dataset'
+import type { Dataset, DatasetImage } from '@/types/dataset'
 
 export function getDatasets(params?: { page?: number; page_size?: number }) {
   return request.get<never, Dataset[]>('/datasets', { params })
@@ -19,4 +19,22 @@ export function updateDataset(id: string, data: Partial<Dataset>) {
 
 export function deleteDataset(id: string) {
   return request.delete(`/datasets/${id}`)
+}
+
+export function getDatasetImages(
+  id: string,
+  params?: { page?: number; page_size?: number }
+) {
+  return request.get<never, DatasetImage[]>(`/datasets/${id}/images`, { params })
+}
+
+export function imageFileUrl(imageId: string): string {
+  return `/api/v1/datasets/images/${imageId}/file`
+}
+
+export function exportAnnotated(
+  id: string,
+  payload: { annotations: Record<string, unknown[]>; mode: 'new' | 'overwrite' }
+) {
+  return request.post<never, Dataset>(`/datasets/${id}/export-annotated`, payload)
 }

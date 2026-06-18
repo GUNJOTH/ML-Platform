@@ -36,4 +36,6 @@ refactor(backend): extract base repository
 
 - 描述用英文，简洁明了
 - 一次提交只做一件事
-- 不提交 .env 文件和 storage/ 下的数据文件
+- 每条 commit 应能独立通过基本检查（启动 + 主流程不崩）
+- 函数 / 类 / Vue 组件超过建议行数时，在 commit message 正文（非标题）说明原因
+- 不提交 `.env` 文件和 `storage/` 下的运行数据
