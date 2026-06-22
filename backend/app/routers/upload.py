@@ -3,10 +3,10 @@ from fastapi import APIRouter, UploadFile, File
 from app.schemas.upload import UploadResponse
 from app.services.upload import UploadService
 
-router = APIRouter(prefix="/upload", tags=["upload"])
+router = APIRouter(prefix="/upload", tags=["文件上传"])
 
 
-@router.post("/dataset", response_model=UploadResponse)
+@router.post("/dataset", response_model=UploadResponse, summary="上传数据集压缩包")
 async def upload_dataset(file: UploadFile = File(...)):
     content = await file.read()
     service = UploadService()
@@ -18,7 +18,7 @@ async def upload_dataset(file: UploadFile = File(...)):
     )
 
 
-@router.post("/model-weight", response_model=UploadResponse)
+@router.post("/model-weight", response_model=UploadResponse, summary="上传模型权重文件")
 async def upload_model_weight(file: UploadFile = File(...)):
     content = await file.read()
     service = UploadService()
@@ -30,7 +30,7 @@ async def upload_model_weight(file: UploadFile = File(...)):
     )
 
 
-@router.post("/image", response_model=UploadResponse)
+@router.post("/image", response_model=UploadResponse, summary="上传推理图片")
 async def upload_image(file: UploadFile = File(...)):
     content = await file.read()
     service = UploadService()

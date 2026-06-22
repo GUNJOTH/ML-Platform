@@ -26,6 +26,42 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '预处理任务' },
       },
       {
+        path: 'data/versions',
+        name: 'DatasetVersions',
+        component: () => import('@/views/data/DatasetVersionList.vue'),
+        meta: { title: '数据集版本 / 导出记录' },
+      },
+      {
+        path: 'data/versions/new',
+        name: 'DatasetVersionCreate',
+        component: () => import('@/views/data/DatasetVersionCreate.vue'),
+        meta: { title: '新建数据集版本' },
+      },
+      {
+        path: 'data/versions/compare',
+        name: 'DatasetVersionCompare',
+        component: () => import('@/views/data/DatasetVersionCompare.vue'),
+        meta: { title: '数据集版本对比' },
+      },
+      {
+        path: 'data/versions/rules',
+        name: 'DatasetVersionRules',
+        component: () => import('@/views/data/DatasetVersionRules.vue'),
+        meta: { title: '版本规则' },
+      },
+      {
+        path: 'data/versions/validation/:versionId',
+        name: 'DatasetVersionValidation',
+        component: () => import('@/views/data/DatasetVersionValidation.vue'),
+        meta: { title: '版本校验结果' },
+      },
+      {
+        path: 'data/versions/exports/:recordId',
+        name: 'DatasetExportRecordDetail',
+        component: () => import('@/views/data/DatasetExportRecordDetail.vue'),
+        meta: { title: '导出记录详情' },
+      },
+      {
         path: 'annotation/workspace/:datasetId?',
         name: 'AnnotationWorkspace',
         component: () => import('@/views/annotation/AnnotationWorkspace.vue'),

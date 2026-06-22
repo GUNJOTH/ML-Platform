@@ -14,6 +14,7 @@ export const menuConfig: MenuItem[] = [
     children: [
       { path: '/data/datasets', title: '数据集管理' },
       { path: '/data/preprocess', title: '预处理任务' },
+      { path: '/data/versions', title: '版本 / 导出记录' },
     ],
   },
   {

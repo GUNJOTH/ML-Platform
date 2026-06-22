@@ -16,28 +16,28 @@ from app.schemas.dataset import (
 from app.services.annotation_export import AnnotationExportService
 from app.services.dataset import DatasetService
 
-router = APIRouter(prefix="/datasets", tags=["datasets"])
+router = APIRouter(prefix="/datasets", tags=["数据集管理"])
 
 
 def get_service(db: AsyncSession = Depends(get_db)) -> DatasetService:
     return DatasetService(db)
 
 
-@router.get("", response_model=list[DatasetResponse])
+@router.get("", response_model=list[DatasetResponse], summary="查询数据集列表")
 async def list_datasets(
     page: int = 1, page_size: int = 20, service: DatasetService = Depends(get_service)
 ):
     return await service.list_datasets(offset=(page - 1) * page_size, limit=page_size)
 
 
-@router.post("", response_model=DatasetResponse, status_code=201)
+@router.post("", response_model=DatasetResponse, status_code=201, summary="创建数据集")
 async def create_dataset(
     data: DatasetCreate, service: DatasetService = Depends(get_service)
 ):
     return await service.create_dataset(data)
 
 
-@router.get("/{dataset_id}", response_model=DatasetResponse)
+@router.get("/{dataset_id}", response_model=DatasetResponse, summary="查询数据集详情")
 async def get_dataset(
     dataset_id: uuid.UUID, service: DatasetService = Depends(get_service)
 ):
@@ -47,7 +47,7 @@ async def get_dataset(
     return entity
 
 
-@router.put("/{dataset_id}", response_model=DatasetResponse)
+@router.put("/{dataset_id}", response_model=DatasetResponse, summary="更新数据集信息")
 async def update_dataset(
     dataset_id: uuid.UUID,
     data: DatasetUpdate,
@@ -59,7 +59,7 @@ async def update_dataset(
     return entity
 
 
-@router.delete("/{dataset_id}", status_code=204)
+@router.delete("/{dataset_id}", status_code=204, summary="删除数据集")
 async def delete_dataset(
     dataset_id: uuid.UUID, service: DatasetService = Depends(get_service)
 ):
@@ -68,7 +68,7 @@ async def delete_dataset(
         raise NotFoundError("Dataset not found")
 
 
-@router.get("/{dataset_id}/images", response_model=list[ImageResponse])
+@router.get("/{dataset_id}/images", response_model=list[ImageResponse], summary="查询数据集图片列表")
 async def list_dataset_images(
     dataset_id: uuid.UUID,
     page: int = 1,
@@ -80,7 +80,7 @@ async def list_dataset_images(
     )
 
 
-@router.post("/{dataset_id}/upload-zip")
+@router.post("/{dataset_id}/upload-zip", summary="上传数据集压缩包")
 async def upload_dataset_zip(
     dataset_id: uuid.UUID,
     file: UploadFile = File(...),
@@ -90,14 +90,14 @@ async def upload_dataset_zip(
     return await service.upload_dataset_zip(dataset_id, content)
 
 
-@router.get("/{dataset_id}/detect")
+@router.get("/{dataset_id}/detect", summary="检测数据集目录结构")
 async def detect_dataset_structure(
     dataset_id: uuid.UUID, service: DatasetService = Depends(get_service)
 ) -> dict[str, Any]:
     return await service.detect_dataset_structure(dataset_id)
 
 
-@router.post("/{dataset_id}/confirm-import", response_model=DatasetResponse)
+@router.post("/{dataset_id}/confirm-import", response_model=DatasetResponse, summary="确认并导入数据集")
 async def confirm_dataset_import(
     dataset_id: uuid.UUID,
     payload: dict[str, Any],
@@ -106,7 +106,7 @@ async def confirm_dataset_import(
     return await service.import_dataset(dataset_id, payload)
 
 
-@router.get("/images/{image_id}/file")
+@router.get("/images/{image_id}/file", summary="获取图片原始文件")
 async def get_image_file(
     image_id: uuid.UUID, service: DatasetService = Depends(get_service)
 ):
@@ -116,7 +116,7 @@ async def get_image_file(
     return FileResponse(path=resolved, media_type="image/jpeg")
 
 
-@router.post("/{dataset_id}/export-annotated", response_model=DatasetResponse)
+@router.post("/{dataset_id}/export-annotated", response_model=DatasetResponse, summary="导出标注结果为新数据集")
 async def export_annotated_dataset(
     dataset_id: uuid.UUID,
     payload: dict[str, Any],

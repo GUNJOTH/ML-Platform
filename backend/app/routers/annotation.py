@@ -13,28 +13,28 @@ from app.schemas.annotation import (
 )
 from app.services.annotation import AnnotationService
 
-router = APIRouter(tags=["annotations"])
+router = APIRouter(tags=["标注管理"])
 
 
 def get_service(db: AsyncSession = Depends(get_db)) -> AnnotationService:
     return AnnotationService(db)
 
 
-@router.get("/images/{image_id}/annotations", response_model=list[AnnotationResponse])
+@router.get("/images/{image_id}/annotations", response_model=list[AnnotationResponse], summary="查询图片标注列表")
 async def list_annotations(
     image_id: uuid.UUID, service: AnnotationService = Depends(get_service)
 ):
     return await service.list_by_image(image_id)
 
 
-@router.post("/annotations", response_model=AnnotationResponse, status_code=201)
+@router.post("/annotations", response_model=AnnotationResponse, status_code=201, summary="创建单条标注")
 async def create_annotation(
     data: AnnotationCreate, service: AnnotationService = Depends(get_service)
 ):
     return await service.create_annotation(data)
 
 
-@router.put("/annotations/{annotation_id}", response_model=AnnotationResponse)
+@router.put("/annotations/{annotation_id}", response_model=AnnotationResponse, summary="更新标注")
 async def update_annotation(
     annotation_id: uuid.UUID,
     data: AnnotationUpdate,
@@ -46,7 +46,7 @@ async def update_annotation(
     return entity
 
 
-@router.delete("/annotations/{annotation_id}", status_code=204)
+@router.delete("/annotations/{annotation_id}", status_code=204, summary="删除标注")
 async def delete_annotation(
     annotation_id: uuid.UUID, service: AnnotationService = Depends(get_service)
 ):
@@ -59,6 +59,7 @@ async def delete_annotation(
     "/images/{image_id}/annotations/batch",
     response_model=list[AnnotationResponse],
     status_code=201,
+    summary="批量覆盖图片标注",
 )
 async def batch_create_annotations(
     image_id: uuid.UUID,

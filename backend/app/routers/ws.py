@@ -9,7 +9,7 @@ from app.core.storage.paths import StoragePaths
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(tags=["websocket"])
+router = APIRouter(tags=["实时通信"])
 
 POLL_INTERVAL_SECONDS = 2
 

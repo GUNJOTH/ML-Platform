@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.deps import get_db
 from app.services.inference import InferenceService
 
-router = APIRouter(prefix="/inference", tags=["inference"])
+router = APIRouter(prefix="/inference", tags=["模型推理"])
 
 
 class InferenceRunRequest(BaseModel):
@@ -16,7 +16,7 @@ class InferenceRunRequest(BaseModel):
     image_path: str
 
 
-@router.post("/run")
+@router.post("/run", summary="执行单张图片推理")
 async def run_inference(
     data: InferenceRunRequest, db: AsyncSession = Depends(get_db)
 ) -> list[dict[str, Any]]:

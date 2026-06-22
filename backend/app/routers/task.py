@@ -11,14 +11,14 @@ from app.schemas.model import MLModelResponse
 from app.schemas.task import TaskArtifactsResponse, TaskCreate, TaskResponse
 from app.services.task import TaskService
 
-router = APIRouter(prefix="/tasks", tags=["tasks"])
+router = APIRouter(prefix="/tasks", tags=["任务管理"])
 
 
 def get_service(db: AsyncSession = Depends(get_db)) -> TaskService:
     return TaskService(db)
 
 
-@router.get("", response_model=list[TaskResponse])
+@router.get("", response_model=list[TaskResponse], summary="查询任务列表")
 async def list_tasks(
     page: int = 1,
     page_size: int = 20,
@@ -28,12 +28,12 @@ async def list_tasks(
     return await service.list_tasks(offset=(page - 1) * page_size, limit=page_size, task_type=task_type)
 
 
-@router.post("", response_model=TaskResponse, status_code=201)
+@router.post("", response_model=TaskResponse, status_code=201, summary="创建任务")
 async def create_task(data: TaskCreate, service: TaskService = Depends(get_service)):
     return await service.create_task(data)
 
 
-@router.get("/{task_id}", response_model=TaskResponse)
+@router.get("/{task_id}", response_model=TaskResponse, summary="查询任务详情")
 async def get_task(task_id: uuid.UUID, service: TaskService = Depends(get_service)):
     entity = await service.get_task(task_id)
     if not entity:
@@ -41,7 +41,7 @@ async def get_task(task_id: uuid.UUID, service: TaskService = Depends(get_servic
     return entity
 
 
-@router.post("/{task_id}/cancel", response_model=TaskResponse)
+@router.post("/{task_id}/cancel", response_model=TaskResponse, summary="取消任务")
 async def cancel_task(
     task_id: uuid.UUID, service: TaskService = Depends(get_service)
 ):
@@ -51,7 +51,7 @@ async def cancel_task(
     return entity
 
 
-@router.post("/{task_id}/start", response_model=TaskResponse)
+@router.post("/{task_id}/start", response_model=TaskResponse, summary="启动任务")
 async def start_task(
     task_id: uuid.UUID, service: TaskService = Depends(get_service)
 ):
@@ -61,14 +61,14 @@ async def start_task(
     return entity
 
 
-@router.get("/{task_id}/progress")
+@router.get("/{task_id}/progress", summary="查询任务进度")
 async def get_task_progress(
     task_id: uuid.UUID, service: TaskService = Depends(get_service)
 ) -> dict[str, Any]:
     return await service.get_progress(task_id)
 
 
-@router.post("/{task_id}/sync", response_model=TaskResponse)
+@router.post("/{task_id}/sync", response_model=TaskResponse, summary="同步任务结果")
 async def sync_task_result(
     task_id: uuid.UUID, service: TaskService = Depends(get_service)
 ):
@@ -78,7 +78,7 @@ async def sync_task_result(
     return entity
 
 
-@router.delete("/{task_id}", status_code=204)
+@router.delete("/{task_id}", status_code=204, summary="删除任务")
 async def delete_task(
     task_id: uuid.UUID, service: TaskService = Depends(get_service)
 ):
@@ -87,14 +87,14 @@ async def delete_task(
         raise NotFoundError("Task not found")
 
 
-@router.get("/{task_id}/history")
+@router.get("/{task_id}/history", summary="查询任务历史指标")
 async def get_task_history(
     task_id: uuid.UUID, service: TaskService = Depends(get_service)
 ) -> list[dict[str, Any]]:
     return await service.get_history(task_id)
 
 
-@router.get("/{task_id}/artifacts", response_model=TaskArtifactsResponse)
+@router.get("/{task_id}/artifacts", response_model=TaskArtifactsResponse, summary="查询任务产物列表")
 async def list_task_artifacts(
     task_id: uuid.UUID, service: TaskService = Depends(get_service)
 ):
@@ -102,7 +102,7 @@ async def list_task_artifacts(
     return TaskArtifactsResponse(items=items)
 
 
-@router.get("/{task_id}/artifacts/{filename}")
+@router.get("/{task_id}/artifacts/{filename}", summary="获取单个任务产物文件")
 async def get_task_artifact(
     task_id: uuid.UUID, filename: str, service: TaskService = Depends(get_service)
 ):
@@ -112,7 +112,7 @@ async def get_task_artifact(
     return FileResponse(path=path, filename=filename)
 
 
-@router.post("/{task_id}/export-model", response_model=MLModelResponse)
+@router.post("/{task_id}/export-model", response_model=MLModelResponse, summary="导出训练产物为模型")
 async def export_task_model(
     task_id: uuid.UUID, service: TaskService = Depends(get_service)
 ):

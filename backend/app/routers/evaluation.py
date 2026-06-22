@@ -9,7 +9,7 @@ from app.schemas.task import TaskResponse
 from app.services.evaluation import EvaluationService
 from app.services.task import TaskService
 
-router = APIRouter(prefix="/evaluation", tags=["evaluation"])
+router = APIRouter(prefix="/evaluation", tags=["模型评估"])
 
 
 class EvaluationRunRequest(BaseModel):
@@ -17,7 +17,7 @@ class EvaluationRunRequest(BaseModel):
     dataset_id: uuid.UUID
 
 
-@router.post("/run", response_model=TaskResponse, status_code=202)
+@router.post("/run", response_model=TaskResponse, status_code=202, summary="发起模型评估任务")
 async def run_evaluation(
     data: EvaluationRunRequest, db: AsyncSession = Depends(get_db)
 ):
