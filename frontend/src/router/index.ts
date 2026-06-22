@@ -62,6 +62,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '模型评估' },
       },
       {
+        path: 'model/evaluation-history',
+        name: 'EvaluationHistory',
+        component: () => import('@/views/model/EvaluationHistory.vue'),
+        meta: { title: '评估历史' },
+      },
+      {
         path: 'model/inference',
         name: 'Inference',
         component: () => import('@/views/model/InferenceWorkspace.vue'),

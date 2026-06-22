@@ -90,6 +90,8 @@ class MLModelService:
         if not entity:
             return False
         await self.repo.delete(entity)
+        relative_path = str(Path("models") / str(model_id))
+        await self.storage.delete_dir(relative_path)
         return True
 
     async def get_weight_path(self, model_id: uuid.UUID) -> dict[str, str] | None:

@@ -1,9 +1,11 @@
 import logging
 import uuid
+from pathlib import Path
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.exceptions import InferenceError, NotFoundError
 from app.frameworks.registry import get_predictor
 from app.repositories.model import MLModelRepository
@@ -25,10 +27,13 @@ class InferenceService:
         if not model or not model.weight_path:
             raise NotFoundError(f"Model {model_id} not found or has no weights")
 
+        resolved_image = self._resolve_path(image_path)
+        resolved_weight = self._resolve_path(model.weight_path)
+
         framework = model.framework or "ultralytics"
         try:
             predictor = get_predictor(framework)
-            detections = await predictor.predict(model.weight_path, image_path)
+            detections = await predictor.predict(str(resolved_weight), str(resolved_image))
         except Exception as exc:
             logger.exception("Inference failed for model %s", model_id)
             raise InferenceError(str(exc)) from exc
@@ -37,3 +42,12 @@ class InferenceService:
             "Inference on model %s: %d detections", model_id, len(detections)
         )
         return detections
+
+    @staticmethod
+    def _resolve_path(path_str: str) -> Path:
+        p = Path(path_str)
+        if p.is_absolute():
+            return p
+        if p.parts and p.parts[0] == "storage":
+            return settings.storage_path.parent / p
+        return settings.storage_path / p

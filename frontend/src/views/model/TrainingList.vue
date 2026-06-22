@@ -58,44 +58,30 @@
 
     <TrainingForm v-model="showForm" @created="handleCreated" />
 
-    <el-dialog v-model="detailVisible" title="训练详情" width="700px">
-      <template v-if="selectedTask">
-        <el-descriptions :column="2" border size="small">
-          <el-descriptions-item label="任务名称" :span="2">{{ selectedTask.name }}</el-descriptions-item>
-          <el-descriptions-item label="状态">
-            <el-tag :type="statusTag(selectedTask.status)">{{ selectedTask.status }}</el-tag>
-          </el-descriptions-item>
-          <el-descriptions-item label="进度">{{ selectedTask.progress }}%</el-descriptions-item>
-        </el-descriptions>
-
-        <template v-if="selectedTask.status === 'completed' && selectedTask.result">
-          <el-descriptions :column="4" border size="small" style="margin-top: 12px">
-            <el-descriptions-item label="mAP50">{{ fmtMetric(selectedTask.result.map50) }}</el-descriptions-item>
-            <el-descriptions-item label="mAP50-95">{{ fmtMetric(selectedTask.result.map50_95) }}</el-descriptions-item>
-            <el-descriptions-item label="Precision">{{ fmtMetric(selectedTask.result.precision) }}</el-descriptions-item>
-            <el-descriptions-item label="Recall">{{ fmtMetric(selectedTask.result.recall) }}</el-descriptions-item>
-          </el-descriptions>
-        </template>
-
-        <div ref="chartRef" style="width: 100%; height: 320px; margin-top: 16px"></div>
-
-        <template v-if="selectedTask.status === 'failed' && selectedTask.error_message">
-          <el-alert type="error" :closable="false" show-icon style="margin-top: 12px">
-            {{ selectedTask.error_message }}
-          </el-alert>
-        </template>
-      </template>
-    </el-dialog>
+    <TrainingDetailDialog
+      v-model:visible="detailVisible"
+      :task="selectedTask"
+      :artifacts="selectedArtifacts"
+      :history="selectedHistory"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick, onMounted, onUnmounted } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import * as echarts from 'echarts'
-import { getTasks, cancelTask, syncTask, deleteTask, getTaskHistory, exportTaskModel } from '@/api/task'
+import {
+  cancelTask,
+  deleteTask,
+  exportTaskModel,
+  getTaskArtifacts,
+  getTaskHistory,
+  getTasks,
+  syncTask,
+} from '@/api/task'
+import type { Task, TaskArtifactItem } from '@/types/task'
+import TrainingDetailDialog from './components/TrainingDetailDialog.vue'
 import TrainingForm from './components/TrainingForm.vue'
-import type { Task } from '@/types/task'
 
 const tasks = ref<Task[]>([])
 const showForm = ref(false)
@@ -103,8 +89,10 @@ const activeTaskId = ref('')
 const liveProgress = ref(0)
 const detailVisible = ref(false)
 const selectedTask = ref<Task | null>(null)
-const chartRef = ref<HTMLDivElement | null>(null)
-let chartInstance: echarts.ECharts | null = null
+const selectedArtifacts = ref<TaskArtifactItem[]>([])
+const selectedHistory = ref<
+  Array<{ epoch: number; train_loss?: number; map50?: number; map50_95?: number }>
+>([])
 
 let ws: WebSocket | null = null
 let pollTimer: ReturnType<typeof setInterval> | null = null
@@ -117,13 +105,17 @@ async function loadTasks() {
   } catch {
     tasks.value = []
   }
-  const runningTasks = tasks.value.filter((t) => t.status === 'running')
-  for (const t of runningTasks) {
-    try { await syncTask(t.id) } catch { /* still running */ }
+  const runningTasks = tasks.value.filter((task) => task.status === 'running')
+  for (const task of runningTasks) {
+    try {
+      await syncTask(task.id)
+    } catch {
+      // still running
+    }
   }
   if (runningTasks.length) {
     tasks.value = await getTasks({ task_type: 'training' })
-    const stillRunning = tasks.value.find((t) => t.status === 'running')
+    const stillRunning = tasks.value.find((task) => task.status === 'running')
     if (stillRunning) {
       watchProgress(stillRunning.id)
     }
@@ -169,7 +161,9 @@ function watchProgress(taskId: string) {
 }
 
 function startPolling(taskId: string) {
-  if (pollTimer) return
+  if (pollTimer) {
+    return
+  }
   pollTimer = setInterval(async () => {
     try {
       const res = await fetch(`/api/v1/tasks/${taskId}/progress`)
@@ -214,34 +208,19 @@ function statusTag(status: string): string {
 
 async function handleDetail(task: Task) {
   selectedTask.value = task
+  selectedArtifacts.value = []
+  selectedHistory.value = []
   detailVisible.value = true
-  await nextTick()
   try {
-    const history = await getTaskHistory(task.id)
-    renderChart(history)
+    const [history, artifacts] = await Promise.all([
+      getTaskHistory(task.id),
+      getTaskArtifacts(task.id),
+    ])
+    selectedHistory.value = history
+    selectedArtifacts.value = artifacts.items
   } catch {
-    // no history available
+    // no detail available
   }
-}
-
-function renderChart(history: Array<{ epoch: number; train_loss?: number; map50?: number; map50_95?: number }>) {
-  if (!chartRef.value || !history.length) return
-  if (chartInstance) chartInstance.dispose()
-  chartInstance = echarts.init(chartRef.value)
-  chartInstance.setOption({
-    tooltip: { trigger: 'axis' },
-    legend: { data: ['Train Loss', 'mAP50', 'mAP50-95'] },
-    xAxis: { type: 'category', data: history.map(h => `${h.epoch}`) },
-    yAxis: [
-      { type: 'value', name: 'Loss', position: 'left' },
-      { type: 'value', name: 'mAP', position: 'right', min: 0, max: 1 },
-    ],
-    series: [
-      { name: 'Train Loss', type: 'line', data: history.map(h => h.train_loss ?? null), smooth: true },
-      { name: 'mAP50', type: 'line', yAxisIndex: 1, data: history.map(h => h.map50 ?? null), smooth: true },
-      { name: 'mAP50-95', type: 'line', yAxisIndex: 1, data: history.map(h => h.map50_95 ?? null), smooth: true },
-    ],
-  })
 }
 
 async function handleDelete(id: string) {
@@ -250,7 +229,9 @@ async function handleDelete(id: string) {
     await deleteTask(id)
     ElMessage.success('已删除')
     loadTasks()
-  } catch { /* cancelled */ }
+  } catch {
+    // cancelled
+  }
 }
 
 async function handleExport(id: string) {
@@ -259,19 +240,13 @@ async function handleExport(id: string) {
     ElMessage.success('模型已导出到模型管理')
     loadTasks()
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : '导出失败'
-    ElMessage.error(msg)
+    const message = err instanceof Error ? err.message : '导出失败'
+    ElMessage.error(message)
   }
-}
-
-function fmtMetric(value: unknown): string {
-  if (value === undefined || value === null) return '--'
-  return ((value as number) * 100).toFixed(1) + '%'
 }
 
 onUnmounted(() => {
   cleanup()
-  if (chartInstance) chartInstance.dispose()
 })
 </script>
 

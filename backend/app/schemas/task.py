@@ -32,3 +32,13 @@ class TaskResponse(BaseModel):
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class TaskArtifactItem(BaseModel):
+    key: str
+    filename: str
+    url: str
+
+
+class TaskArtifactsResponse(BaseModel):
+    items: list[TaskArtifactItem]

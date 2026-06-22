@@ -29,7 +29,7 @@ import { ref, watch } from 'vue'
 import { useCanvas, type BBox } from '@/composables/useCanvas'
 
 interface AnnotationData {
-  id?: string
+  id: string
   label_id: string
   label_name: string
   color: string
@@ -50,9 +50,17 @@ const emit = defineEmits<{
 const canvasEl = ref<HTMLCanvasElement | null>(null)
 const canvas = useCanvas(canvasEl)
 
+defineExpose({
+  updateSelectedLabel: canvas.updateSelectedLabel,
+  selectMode: () => {
+    canvas.mode.value = 'select'
+  },
+})
+
 watch(() => props.imageSrc, async (src) => {
   if (src) {
     await canvas.loadImage(src)
+    canvas.mode.value = 'draw'
     loadAnnotations()
   }
 })
@@ -67,7 +75,7 @@ watch(() => props.annotations, loadAnnotations)
 
 function loadAnnotations() {
   const boxes: BBox[] = props.annotations.map((a) => ({
-    id: a.id || crypto.randomUUID(),
+    id: a.id,
     x: a.bbox.x,
     y: a.bbox.y,
     width: a.bbox.width,

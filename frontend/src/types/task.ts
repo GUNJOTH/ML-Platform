@@ -14,3 +14,9 @@ export interface Task {
   created_at: string
   updated_at: string
 }
+
+export interface TaskArtifactItem {
+  key: string
+  filename: string
+  url: string
+}

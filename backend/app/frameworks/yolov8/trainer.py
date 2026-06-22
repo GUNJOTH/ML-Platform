@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from app.frameworks.base import BaseTrainer
+from app.core.storage.paths import StoragePaths
 
 logger = logging.getLogger(__name__)
 
@@ -26,10 +27,11 @@ class YOLOv8Trainer(BaseTrainer):
         cos_lr = config.get("cos_lr", False)
         close_mosaic = config.get("close_mosaic", 10)
         pretrained = config.get("pretrained", True)
+        task_id = config.get("task_id", "standalone")
         import torch
         device = config.get("device") or ("cuda" if torch.cuda.is_available() else "cpu")
-        project_dir = config.get("project_dir", "./storage/runs")
         run_name = config.get("run_name", "train")
+        project_dir = config.get("project_dir", str(StoragePaths.run_root(task_id)))
         progress_file = config.get("progress_file")
 
         model = YOLO(weight_path)

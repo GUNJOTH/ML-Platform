@@ -1,5 +1,6 @@
 import request from './request'
 import type { Task } from '@/types/task'
+import type { TaskArtifactItem } from '@/types/task'
 
 export function getTasks(params?: { page?: number; page_size?: number; task_type?: string }) {
   return request.get<never, Task[]>('/tasks', { params })
@@ -45,6 +46,10 @@ export function exportTaskModel(id: string) {
 
 export function getTaskProgress(id: string) {
   return request.get<never, { task_id: string; progress: number }>(`/tasks/${id}/progress`)
+}
+
+export function getTaskArtifacts(id: string) {
+  return request.get<never, { items: TaskArtifactItem[] }>(`/tasks/${id}/artifacts`)
 }
 
 export function listDatasets() {

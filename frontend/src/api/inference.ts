@@ -9,7 +9,3 @@ export interface InferenceDetection {
 export function runInference(data: { model_id: string; image_path: string }) {
   return request.post<never, InferenceDetection[]>('/inference/run', data)
 }
-
-export function runEvaluation(data: { model_id: string; dataset_id: string }) {
-  return request.post('/evaluation/run', data)
-}

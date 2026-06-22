@@ -52,6 +52,22 @@ class DatasetImporter:
                     "count": self._count_images(images_dir),
                 }
 
+        if not result["splits"]:
+            all_images = list(root.rglob("*"))
+            all_images = [f for f in all_images if f.suffix.lower() in _IMAGE_EXTS]
+            if all_images:
+                result["splits"]["train"] = {
+                    "images_dir": str(root),
+                    "count": len(all_images),
+                }
+            if not result["classes"]:
+                class_dirs = [
+                    d.name for d in root.iterdir()
+                    if d.is_dir() and any(f.suffix.lower() in _IMAGE_EXTS for f in d.iterdir() if f.is_file())
+                ]
+                if class_dirs:
+                    result["classes"] = sorted(class_dirs)
+
         return result
 
     def generate_data_yaml(self, dataset_id: str, classes: list[str]) -> str:
@@ -78,11 +94,15 @@ class DatasetImporter:
     def list_images(self, dataset_id: str, split: str) -> list[dict[str, str]]:
         root = StoragePaths.dataset_root(dataset_id)
         images_dir = self._find_split_dir(root, split)
-        if not images_dir:
-            return []
+        if images_dir:
+            return [
+                {"filename": f.name, "path": str(f)}
+                for f in sorted(images_dir.iterdir())
+                if f.suffix.lower() in _IMAGE_EXTS
+            ]
         return [
             {"filename": f.name, "path": str(f)}
-            for f in sorted(images_dir.iterdir())
+            for f in sorted(root.rglob("*"))
             if f.suffix.lower() in _IMAGE_EXTS
         ]
 

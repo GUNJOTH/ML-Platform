@@ -1,5 +1,10 @@
 import request from './request'
 
+export interface DetectResult {
+  classes: string[]
+  splits: Record<string, { count: number; images_dir?: string }>
+}
+
 export function uploadDatasetZip(datasetId: string, file: File) {
   const formData = new FormData()
   formData.append('file', file)
@@ -9,7 +14,7 @@ export function uploadDatasetZip(datasetId: string, file: File) {
 }
 
 export function detectDatasetStructure(datasetId: string) {
-  return request.get(`/datasets/${datasetId}/detect`)
+  return request.get<never, DetectResult>(`/datasets/${datasetId}/detect`)
 }
 
 export function confirmDatasetImport(datasetId: string, payload: Record<string, unknown>) {

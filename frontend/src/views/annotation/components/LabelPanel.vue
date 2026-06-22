@@ -16,19 +16,15 @@
 </template>
 
 <script setup lang="ts">
-interface LabelItem {
-  id: string
-  name: string
-  color: string
-}
+import type { WorkspaceLabelItem } from '@/types/annotation-workspace'
 
 defineProps<{
-  labels: LabelItem[]
+  labels: WorkspaceLabelItem[]
   selectedLabelId: string
 }>()
 
 const emit = defineEmits<{
-  select: [label: LabelItem]
+  select: [label: WorkspaceLabelItem]
 }>()
 </script>
 

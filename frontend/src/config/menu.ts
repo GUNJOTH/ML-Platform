@@ -34,6 +34,7 @@ export const menuConfig: MenuItem[] = [
       { path: '/model/list', title: '模型管理' },
       { path: '/model/training', title: '训练任务' },
       { path: '/model/evaluation', title: '模型评估' },
+      { path: '/model/evaluation-history', title: '评估历史' },
       { path: '/model/inference', title: '模型推理' },
     ],
   },

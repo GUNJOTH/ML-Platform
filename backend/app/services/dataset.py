@@ -5,6 +5,7 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.core.storage.factory import get_storage
 from app.exceptions import NotFoundError
 from app.models.dataset import Dataset, Image, Label
 from app.repositories.dataset import DatasetRepository, ImageRepository
@@ -19,6 +20,7 @@ class DatasetService:
         self.image_repo = ImageRepository(session)
         self.label_repo = LabelRepository(session)
         self.importer = DatasetImporter()
+        self.storage = get_storage()
 
     async def list_datasets(self, offset: int = 0, limit: int = 20) -> list[Dataset]:
         return await self.repo.list(offset=offset, limit=limit)
@@ -49,6 +51,8 @@ class DatasetService:
         if not entity:
             return False
         await self.repo.delete(entity)
+        relative_path = str(Path("datasets") / str(dataset_id))
+        await self.storage.delete_dir(relative_path)
         return True
 
     async def get_images(
@@ -67,7 +71,10 @@ class DatasetService:
             return None
         p = Path(image.file_path)
         if not p.is_absolute():
-            p = settings.storage_path.parent / p
+            if p.parts and p.parts[0] == "storage":
+                p = settings.storage_path.parent / p
+            else:
+                p = settings.storage_path / p
         return str(p) if p.exists() else None
 
     async def count_datasets(self) -> int:

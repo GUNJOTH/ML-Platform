@@ -120,13 +120,29 @@ function drawDetections() {
 
     for (const det of detections.value) {
       const [x1, y1, x2, y2] = det.bbox
+      const label = `${det.class_name} ${(det.confidence * 100).toFixed(0)}%`
+      const fontSize = Math.max(18, Math.round(Math.min(canvas.width, canvas.height) / 45))
+      const paddingX = 8
+      const paddingY = 6
+      const textY = y1 > fontSize + paddingY * 2 ? y1 - 8 : y1 + fontSize + paddingY
+
       ctx.strokeStyle = '#00ff00'
-      ctx.lineWidth = 2
+      ctx.lineWidth = 3
       ctx.strokeRect(x1, y1, x2 - x1, y2 - y1)
 
-      ctx.fillStyle = '#00ff00'
-      ctx.font = '14px sans-serif'
-      ctx.fillText(`${det.class_name} ${(det.confidence * 100).toFixed(0)}%`, x1, y1 - 4)
+      ctx.font = `600 ${fontSize}px sans-serif`
+      const textWidth = ctx.measureText(label).width
+      const boxX = Math.max(0, x1)
+      const boxY = Math.max(0, textY - fontSize - paddingY)
+      const boxWidth = Math.min(canvas.width - boxX, textWidth + paddingX * 2)
+      const boxHeight = fontSize + paddingY * 2
+
+      ctx.fillStyle = 'rgba(0, 255, 0, 0.9)'
+      ctx.fillRect(boxX, boxY, boxWidth, boxHeight)
+
+      ctx.fillStyle = '#111'
+      ctx.textBaseline = 'top'
+      ctx.fillText(label, boxX + paddingX, boxY + paddingY)
     }
   }
   img.src = URL.createObjectURL(uploadedFile)

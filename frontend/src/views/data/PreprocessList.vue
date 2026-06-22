@@ -57,19 +57,11 @@ import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { getDatasets } from '@/api/dataset'
 import { getTasks, createTask } from '@/api/task'
+import type { Dataset } from '@/types/dataset'
+import type { Task } from '@/types/task'
 
-interface DatasetItem { id: string; name: string }
-interface TaskItem {
-  id: string
-  name: string
-  dataset_id: string | null
-  status: string
-  config: { preprocess_type?: string } | null
-  created_at: string
-}
-
-const datasets = ref<DatasetItem[]>([])
-const tasks = ref<TaskItem[]>([])
+const datasets = ref<Dataset[]>([])
+const tasks = ref<Task[]>([])
 const showForm = ref(false)
 
 const form = reactive({
@@ -83,8 +75,8 @@ onMounted(loadData)
 async function loadData() {
   try {
     const [ds, ts] = await Promise.all([getDatasets(), getTasks({ task_type: 'preprocess' })])
-    datasets.value = (ds || []) as unknown as DatasetItem[]
-    tasks.value = (ts || []) as unknown as TaskItem[]
+    datasets.value = ds || []
+    tasks.value = ts || []
   } catch {
     datasets.value = []
     tasks.value = []

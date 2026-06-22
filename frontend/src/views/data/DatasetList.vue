@@ -82,18 +82,9 @@ import { UploadFilled } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getDatasets, createDataset, deleteDataset } from '@/api/dataset'
 import { uploadDatasetZip, detectDatasetStructure, confirmDatasetImport } from '@/api/upload'
+import type { DetectResult } from '@/api/upload'
 import ImportConfirmDialog from './components/ImportConfirmDialog.vue'
-
-interface Dataset {
-  id: string
-  name: string
-  data_type: string
-  num_classes: number
-  train_count: number
-  val_count: number
-  test_count: number
-  status: string
-}
+import type { Dataset } from '@/types/dataset'
 
 const datasets = ref<Dataset[]>([])
 const showCreate = ref(false)
@@ -101,7 +92,7 @@ const showUpload = ref(false)
 const showConfirm = ref(false)
 const uploading = ref(false)
 const activeDatasetId = ref('')
-const detectResult = ref<{ classes: string[]; splits: Record<string, { count: number }> } | null>(null)
+const detectResult = ref<DetectResult | null>(null)
 const router = useRouter()
 
 const createForm = reactive({ name: '', description: '' })
@@ -110,7 +101,7 @@ let zipFile: File | null = null
 onMounted(loadDatasets)
 
 async function loadDatasets() {
-  datasets.value = (await getDatasets()) as unknown as Dataset[]
+  datasets.value = await getDatasets()
 }
 
 async function handleCreate() {
@@ -119,7 +110,7 @@ async function handleCreate() {
     return
   }
   try {
-    const res = await createDataset(createForm) as unknown as { id: string }
+    const res = await createDataset(createForm)
     showCreate.value = false
     createForm.name = ''
     createForm.description = ''
@@ -150,7 +141,7 @@ async function doUpload() {
   try {
     await uploadDatasetZip(activeDatasetId.value, zipFile)
     const result = await detectDatasetStructure(activeDatasetId.value)
-    detectResult.value = result as unknown as { classes: string[]; splits: Record<string, { count: number }> }
+    detectResult.value = result
     showUpload.value = false
     showConfirm.value = true
   } finally {

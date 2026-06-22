@@ -17,7 +17,7 @@ from app.models.task import TERMINAL_STATUSES, Task, TaskStatus
 from app.repositories.dataset import DatasetRepository
 from app.repositories.model import MLModelRepository
 from app.repositories.task import TaskRepository
-from app.schemas.task import TaskCreate
+from app.schemas.task import TaskArtifactItem, TaskCreate
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +39,9 @@ class TaskService:
         p = Path(path_str)
         if p.is_absolute():
             return p
-        return settings.storage_path.parent / p
+        if p.parts and p.parts[0] == "storage":
+            return settings.storage_path.parent / p
+        return settings.storage_path / p
 
     async def list_tasks(
         self, offset: int = 0, limit: int = 20, task_type: str | None = None
@@ -90,6 +92,9 @@ class TaskService:
             else:
                 raise ValueError("所选数据集缺少 data.yaml 配置")
 
+        config["project_dir"] = str(StoragePaths.run_root(task_id))
+        config["run_name"] = "eval" if entity.task_type == "evaluation" else "train"
+
         result = await self.runner.run(str(task_id), config)
         entity.status = TaskStatus.RUNNING
         entity.started_at = datetime.now(timezone.utc)
@@ -124,8 +129,6 @@ class TaskService:
             entity.result = result
             entity.progress = 100
             entity.finished_at = datetime.now(timezone.utc)
-            if entity.task_type == "training" and result.get("weight_path"):
-                await self._register_trained_model(entity, result)
         elif result.get("status") == TaskStatus.FAILED.value:
             entity.status = TaskStatus.FAILED
             entity.error_message = result.get("error", "Unknown error")
@@ -133,40 +136,12 @@ class TaskService:
             entity.finished_at = datetime.now(timezone.utc)
         return await self.repo.update(entity)
 
-    async def _register_trained_model(
-        self, task: Task, result: dict[str, Any]
-    ) -> None:
-        weight_path = result["weight_path"]
-        weight_file = self._resolve_path(weight_path)
-        size_mb = (
-            round(weight_file.stat().st_size / (1024 * 1024), 2)
-            if weight_file.exists() else None
-        )
-        config = task.config or {}
-        metrics = {
-            k: result[k]
-            for k in ("map50", "map50_95", "precision", "recall")
-            if k in result
-        }
-        model = MLModel(
-            name=f"{task.name}_output",
-            framework=config.get("framework", "ultralytics"),
-            model_source="trained",
-            status="ready",
-            weight_path=str(weight_file),
-            model_size_mb=size_mb,
-            dataset_id=task.dataset_id,
-            metrics=metrics,
-        )
-        model_repo = MLModelRepository(self.session)
-        await model_repo.create(model)
-
     async def delete_task(self, task_id: uuid.UUID) -> bool:
         entity = await self.repo.get_by_id(task_id)
         if not entity:
             return False
         if entity.status not in TERMINAL_STATUSES:
-            raise TaskStateError(f"Cannot delete task in status {entity.status.value}")
+            await self.runner.cancel(str(task_id))
         await self.repo.delete(entity)
         relative_path = str(Path("tasks") / str(task_id))
         await self.storage.delete_dir(relative_path)
@@ -181,6 +156,57 @@ class TaskService:
             return json.loads(content)
         except (ValueError, OSError):
             return []
+
+    async def list_artifacts(self, task_id: uuid.UUID) -> list[TaskArtifactItem]:
+        entity = await self.repo.get_by_id(task_id)
+        if not entity:
+            return []
+
+        run_name = "eval" if entity.task_type == "evaluation" else "train"
+        run_dir = StoragePaths.task_run_dir(task_id, run_name)
+        if not run_dir.exists():
+            return []
+
+        artifact_names = [
+            "results.png",
+            "results.csv",
+            "labels.jpg",
+            "train_batch0.jpg",
+            "train_batch1.jpg",
+            "train_batch2.jpg",
+            "train_batch3.jpg",
+            "train_batch4.jpg",
+            "val_batch0_labels.jpg",
+            "val_batch0_pred.jpg",
+            "confusion_matrix.png",
+            "confusion_matrix_normalized.png",
+            "BoxPR_curve.png",
+            "BoxP_curve.png",
+            "BoxR_curve.png",
+            "BoxF1_curve.png",
+        ]
+        items: list[TaskArtifactItem] = []
+        for filename in artifact_names:
+            path = run_dir / filename
+            if path.exists():
+                items.append(
+                    TaskArtifactItem(
+                        key=filename.rsplit(".", 1)[0],
+                        filename=filename,
+                        url=f"/api/v1/tasks/{task_id}/artifacts/{filename}",
+                    )
+                )
+        return items
+
+    async def get_artifact_path(self, task_id: uuid.UUID, filename: str) -> Path | None:
+        entity = await self.repo.get_by_id(task_id)
+        if not entity:
+            return None
+        run_name = "eval" if entity.task_type == "evaluation" else "train"
+        path = StoragePaths.task_run_dir(task_id, run_name) / filename
+        if not path.exists() or not path.is_file():
+            return None
+        return path
 
     async def export_model(self, task_id: uuid.UUID) -> MLModel | None:
         entity = await self.repo.get_by_id(task_id)

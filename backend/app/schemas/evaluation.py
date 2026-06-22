@@ -12,10 +12,17 @@ class EvaluationRequest(BaseModel):
 
 class EvaluationMetrics(BaseModel):
     map50: float
+    map75: float | None = None
     map50_95: float
     precision: float
     recall: float
-    per_class: dict[str, Any] | None = None
+    f1: float | None = None
+    fitness: float | None = None
+    speed_ms: dict[str, float] | None = None
+    dataset_summary: dict[str, Any] | None = None
+    per_class: list[dict[str, Any]] | None = None
+    artifacts: dict[str, str] | None = None
+    evaluation_config: dict[str, Any] | None = None
 
 
 class EvaluationResponse(BaseModel):

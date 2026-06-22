@@ -2,12 +2,13 @@ import uuid
 from typing import Any
 
 from fastapi import APIRouter, Depends
+from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.deps import get_db
 from app.exceptions import NotFoundError
 from app.schemas.model import MLModelResponse
-from app.schemas.task import TaskCreate, TaskResponse
+from app.schemas.task import TaskArtifactsResponse, TaskCreate, TaskResponse
 from app.services.task import TaskService
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
@@ -91,6 +92,24 @@ async def get_task_history(
     task_id: uuid.UUID, service: TaskService = Depends(get_service)
 ) -> list[dict[str, Any]]:
     return await service.get_history(task_id)
+
+
+@router.get("/{task_id}/artifacts", response_model=TaskArtifactsResponse)
+async def list_task_artifacts(
+    task_id: uuid.UUID, service: TaskService = Depends(get_service)
+):
+    items = await service.list_artifacts(task_id)
+    return TaskArtifactsResponse(items=items)
+
+
+@router.get("/{task_id}/artifacts/{filename}")
+async def get_task_artifact(
+    task_id: uuid.UUID, filename: str, service: TaskService = Depends(get_service)
+):
+    path = await service.get_artifact_path(task_id, filename)
+    if not path:
+        raise NotFoundError("Task artifact not found")
+    return FileResponse(path=path, filename=filename)
 
 
 @router.post("/{task_id}/export-model", response_model=MLModelResponse)
