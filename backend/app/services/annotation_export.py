@@ -13,6 +13,7 @@ from app.exceptions import NotFoundError
 from app.models.dataset import Dataset, Image, Label
 from app.repositories.dataset import DatasetRepository, ImageRepository
 from app.repositories.label import LabelRepository
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -34,8 +35,8 @@ class AnnotationExportService:
             raise NotFoundError("Source dataset not found")
 
         labels = await self.label_repo.list_by_dataset(source_dataset_id)
-        label_map = {str(lb.id): idx for idx, lb in enumerate(labels)}
-        class_names = [lb.name for lb in labels]
+        class_names = self._resolve_class_names(source, labels)
+        label_map = self._build_label_map(labels, class_names)
         images = await self.image_repo.list_by_dataset(
             source_dataset_id, offset=0, limit=10000
         )
@@ -65,6 +66,43 @@ class AnnotationExportService:
             return Path(source.storage_path).parent
         return StoragePaths.dataset_root(dataset_id)
 
+    def _resolve_class_names(self, source: Dataset, labels: list[Label]) -> list[str]:
+        if labels:
+            return [lb.name for lb in labels]
+
+        yaml_path = self._resolve_source_yaml(source)
+        if yaml_path and yaml_path.exists():
+            try:
+                payload = yaml.safe_load(yaml_path.read_text(encoding="utf-8")) or {}
+            except (OSError, yaml.YAMLError):
+                payload = {}
+            names = payload.get("names")
+            if isinstance(names, dict):
+                return [str(name) for _, name in sorted(names.items(), key=lambda item: int(item[0]))]
+            if isinstance(names, list):
+                return [str(name) for name in names]
+
+        return []
+
+    def _build_label_map(
+        self, labels: list[Label], class_names: list[str]
+    ) -> dict[str, int]:
+        if labels:
+            return {str(lb.id): idx for idx, lb in enumerate(labels)}
+
+        return {str(index): index for index, _ in enumerate(class_names)}
+
+    @staticmethod
+    def _resolve_source_yaml(source: Dataset) -> Path | None:
+        if not source.storage_path:
+            return None
+        path = Path(source.storage_path)
+        if path.is_absolute():
+            return path
+        if path.parts and path.parts[0] == "storage":
+            return settings.storage_path.parent / path
+        return settings.storage_path / path
+
     async def _create_new_dataset(
         self, source: Dataset, class_names: list[str]
     ) -> Dataset:
@@ -91,7 +129,7 @@ class AnnotationExportService:
         self, images: list[Image], target_id: uuid.UUID
     ) -> None:
         for img in images:
-            src_path = Path(img.file_path).resolve()
+            src_path = self._resolve_image_path(img.file_path)
             dest_dir = StoragePaths.dataset_images_dir(target_id, img.split)
             dest_dir.mkdir(parents=True, exist_ok=True)
             dest_path = dest_dir / img.filename
@@ -109,6 +147,15 @@ class AnnotationExportService:
                     annotation_status="annotated",
                 )
             )
+
+    @staticmethod
+    def _resolve_image_path(path_str: str) -> Path:
+        path = Path(path_str)
+        if path.is_absolute():
+            return path
+        if path.parts and path.parts[0] == "storage":
+            return settings.storage_path.parent / path
+        return settings.storage_path / path
 
     def _write_yolo_labels(
         self,
@@ -130,10 +177,23 @@ class AnnotationExportService:
             img_h = img.height if img.height > 0 else 640
 
             lines = [
-                self._bbox_to_yolo_line(label_map.get(box["label_id"], 0), box["bbox"], img_w, img_h)
+                self._bbox_to_yolo_line(
+                    self._resolve_box_class_index(box["label_id"], label_map),
+                    box["bbox"],
+                    img_w,
+                    img_h,
+                )
                 for box in boxes
             ]
             label_file.write_text("\n".join(lines))
+
+    @staticmethod
+    def _resolve_box_class_index(label_id: str, label_map: dict[str, int]) -> int:
+        if label_id in label_map:
+            return label_map[label_id]
+        if label_id.isdigit():
+            return int(label_id)
+        return 0
 
     @staticmethod
     def _bbox_to_yolo_line(
@@ -149,14 +209,15 @@ class AnnotationExportService:
     def _write_data_yaml(target_dir: Path, class_names: list[str]) -> Path:
         yaml_path = target_dir / "data.yaml"
         data: dict[str, Any] = {
+            "path": str(target_dir),
             "names": dict(enumerate(class_names)),
             "nc": len(class_names),
-            "train": str(target_dir / "images" / "train"),
-            "val": str(target_dir / "images" / "val"),
+            "train": "images/train",
+            "val": "images/val",
         }
         test_dir = target_dir / "images" / "test"
         if test_dir.exists():
-            data["test"] = str(test_dir)
+            data["test"] = "images/test"
 
         yaml_path.write_text(yaml.dump(data, allow_unicode=True))
         return yaml_path

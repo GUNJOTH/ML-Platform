@@ -29,11 +29,12 @@
       <el-table-column label="创建时间" width="180">
         <template #default="{ row }">{{ formatDate(row.createdAt) }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="260" fixed="right">
+      <el-table-column label="操作" width="320" fixed="right">
         <template #default="{ row }">
           <el-button link type="primary" @click="$emit('detail', row)">详情</el-button>
           <el-button link type="success" @click="$emit('export', row)">导出</el-button>
           <el-button link type="warning" @click="$emit('compare', row)">对比</el-button>
+          <el-button link type="danger" @click="$emit('delete', row)">删除</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -52,6 +53,7 @@ defineEmits<{
   detail: [row: DatasetVersionSummary]
   export: [row: DatasetVersionSummary]
   compare: [row: DatasetVersionSummary]
+  delete: [row: DatasetVersionSummary]
 }>()
 
 function sourceLabel(source: DatasetVersionSummary['source']): string {

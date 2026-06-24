@@ -24,3 +24,13 @@ class TaskRepository(BaseRepository[Task]):
         )
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
+
+    async def list_by_dataset_export(self, dataset_export_id: str) -> list[Task]:
+        stmt = select(Task).where(Task.dataset_export_id == dataset_export_id)
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def list_by_dataset_version(self, dataset_version_id: str) -> list[Task]:
+        stmt = select(Task).where(Task.dataset_version_id == dataset_version_id)
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())

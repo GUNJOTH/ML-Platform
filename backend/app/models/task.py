@@ -34,6 +34,8 @@ class Task(UUIDMixin, TimestampMixin, Base):
     )
     model_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("models.id"))
     dataset_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("datasets.id"))
+    dataset_version_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("dataset_versions.id"))
+    dataset_export_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("dataset_exports.id"))
     config: Mapped[dict | None] = mapped_column(JSON)
     progress: Mapped[int] = mapped_column(Integer, default=0)
     result: Mapped[dict | None] = mapped_column(JSON)

@@ -4,12 +4,15 @@
       <div>
         <h3>新建数据集版本</h3>
         <p class="page-subtitle">
-          先冻结训练前要用的数据快照，后续再接真实版本生成、校验和落库逻辑。
+          先校验当前冻结范围是否可用于训练，再正式创建版本，避免反复生成无效版本记录。
         </p>
       </div>
       <div class="header-actions">
         <el-button @click="goBack">返回版本列表</el-button>
-        <el-button type="primary" @click="showPlaceholder('创建版本')">创建版本</el-button>
+        <el-button :loading="validating" @click="handleValidateDraft">先校验</el-button>
+        <el-button type="primary" :disabled="!validationPassed" :loading="creating" @click="handleCreateVersion">
+          校验通过后创建版本
+        </el-button>
       </div>
     </div>
 
@@ -43,7 +46,6 @@
             <el-form-item label="训练格式">
               <el-radio-group v-model="form.exportFormat">
                 <el-radio-button label="YOLO">YOLO</el-radio-button>
-                <el-radio-button label="COCO">COCO</el-radio-button>
               </el-radio-group>
             </el-form-item>
             <el-form-item label="版本说明">
@@ -85,53 +87,32 @@
             </el-form-item>
           </el-form>
         </el-card>
+
+        <DatasetVersionValidationIssuesCard
+          title="创建前校验结果"
+          empty-text="请先点击“先校验”，确认当前版本范围是否可用。"
+          success-text="校验通过，可创建版本"
+          failure-text="校验未通过，暂不能创建版本"
+          :validation-result="validationResult"
+        />
       </el-col>
 
       <el-col :span="9">
-        <el-card class="section-card">
-          <template #header>版本预览</template>
-          <div class="preview-grid">
-            <div class="preview-item">
-              <span class="preview-label">数据集</span>
-              <span class="preview-value">{{ datasetName }}</span>
-            </div>
-            <div class="preview-item">
-              <span class="preview-label">版本名</span>
-              <span class="preview-value">{{ form.versionName || '--' }}</span>
-            </div>
-            <div class="preview-item">
-              <span class="preview-label">来源</span>
-              <span class="preview-value">{{ sourceLabel }}</span>
-            </div>
-            <div class="preview-item">
-              <span class="preview-label">训练格式</span>
-              <span class="preview-value">{{ form.exportFormat }}</span>
-            </div>
-            <div class="preview-item">
-              <span class="preview-label">冻结范围</span>
-              <span class="preview-value">{{ includeSplitText }}</span>
-            </div>
-            <div class="preview-item">
-              <span class="preview-label">划分策略</span>
-              <span class="preview-value">{{ splitStrategyLabel }}</span>
-            </div>
-          </div>
-        </el-card>
+        <DatasetVersionPreviewCard
+          :dataset-name="datasetName"
+          :version-name="form.versionName"
+          :source-label="sourceLabel"
+          :export-format="form.exportFormat"
+          :include-split-text="includeSplitText"
+          :split-strategy-label="splitStrategyLabel"
+        />
 
         <el-card class="section-card">
-          <template #header>训练前校验预留</template>
+          <template #header>训练前检查提示</template>
           <div class="hint-list">
             <div v-for="hint in validationHints" :key="hint" class="hint-item">
               {{ hint }}
             </div>
-          </div>
-        </el-card>
-
-        <el-card class="section-card">
-          <template #header>界面阶段说明</template>
-          <div class="phase-note">
-            当前只搭建新建版本界面，不执行真实冻结逻辑。后续可以在这里接入：
-            数据快照生成、版本校验、差异追踪和落库记录。
           </div>
         </el-card>
       </el-col>
@@ -140,12 +121,21 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { getDatasets } from '@/api/dataset'
+import { createDatasetVersion, validateDatasetVersionDraft } from '@/api/datasetVersion'
 import type { Dataset } from '@/types/dataset'
+import type { DatasetVersionValidationResult } from '@/types/dataset-version'
 import DatasetVersionPlanPanel from './components/DatasetVersionPlanPanel.vue'
+import DatasetVersionPreviewCard from './components/DatasetVersionPreviewCard.vue'
+import DatasetVersionValidationIssuesCard from './components/DatasetVersionValidationIssuesCard.vue'
+import {
+  buildDatasetVersionPayload,
+  buildDatasetVersionValidationFingerprint,
+  type DatasetVersionCreateFormState,
+} from './datasetVersionValidation'
 import {
   datasetVersionCreatePlanItems,
   datasetVersionCreateValidationHints,
@@ -153,8 +143,12 @@ import {
 
 const router = useRouter()
 const datasets = ref<Dataset[]>([])
+const validating = ref(false)
+const creating = ref(false)
+const validationResult = ref<DatasetVersionValidationResult | null>(null)
+const validationFingerprint = ref('')
 
-const form = reactive({
+const form = reactive<DatasetVersionCreateFormState>({
   datasetId: '',
   versionName: '',
   source: 'annotation-export',
@@ -195,6 +189,23 @@ const splitStrategyLabel = computed(() => {
   return map[form.splitStrategy] || form.splitStrategy
 })
 
+const validationPassed = computed(() => {
+  return (
+    Boolean(validationResult.value?.passed) &&
+    validationFingerprint.value === buildDatasetVersionValidationFingerprint(form)
+  )
+})
+
+watch(
+  () => buildDatasetVersionValidationFingerprint(form),
+  (value) => {
+    if (validationFingerprint.value && validationFingerprint.value !== value) {
+      validationResult.value = null
+      validationFingerprint.value = ''
+    }
+  },
+)
+
 onMounted(async () => {
   try {
     datasets.value = await getDatasets()
@@ -210,12 +221,56 @@ function goBack() {
   router.push('/data/versions')
 }
 
-async function showPlaceholder(action: string) {
-  await ElMessageBox.alert(
-    `${action}功能暂未接后端逻辑。当前阶段先完成版本创建页面的信息结构和交互骨架。`,
-    '占位说明',
-    { confirmButtonText: '知道了' },
-  )
+async function handleValidateDraft() {
+  if (!form.datasetId || !form.versionName.trim()) {
+    ElMessage.warning('请选择数据集并填写版本名称')
+    return
+  }
+  if (!form.includeSplits.length) {
+    ElMessage.warning('请至少选择一个数据划分')
+    return
+  }
+
+  validating.value = true
+  try {
+    validationResult.value = await validateDatasetVersionDraft(buildDatasetVersionPayload(form))
+    validationFingerprint.value = buildDatasetVersionValidationFingerprint(form)
+    if (validationResult.value.passed) {
+      ElMessage.success('校验通过，可以创建版本')
+    } else {
+      ElMessage.warning('校验未通过，请先处理阻断项')
+    }
+  } catch (error: unknown) {
+    validationResult.value = null
+    validationFingerprint.value = ''
+    const message = error instanceof Error ? error.message : '版本校验失败'
+    ElMessage.error(message)
+  } finally {
+    validating.value = false
+  }
+}
+
+async function handleCreateVersion() {
+  if (!form.datasetId || !form.versionName.trim()) {
+    ElMessage.warning('请选择数据集并填写版本名称')
+    return
+  }
+  if (!validationPassed.value) {
+    ElMessage.warning('请先完成当前表单的版本校验，并确保校验通过')
+    return
+  }
+
+  creating.value = true
+  try {
+    const version = await createDatasetVersion(buildDatasetVersionPayload(form))
+    ElMessage.success('数据集版本已创建')
+    router.push(`/data/versions/validation/${version.id}`)
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : '创建数据集版本失败'
+    await ElMessageBox.alert(message, '创建失败', { confirmButtonText: '知道了' })
+  } finally {
+    creating.value = false
+  }
 }
 </script>
 
@@ -245,31 +300,6 @@ async function showPlaceholder(action: string) {
   border-radius: 16px;
 }
 
-.preview-grid {
-  display: grid;
-  gap: 12px;
-}
-
-.preview-item {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 12px 14px;
-  border-radius: 12px;
-  background: #f8fafc;
-}
-
-.preview-label {
-  color: #64748b;
-  font-size: 13px;
-}
-
-.preview-value {
-  color: #0f172a;
-  font-weight: 600;
-  text-align: right;
-}
-
 .hint-list {
   display: grid;
   gap: 10px;
@@ -281,10 +311,5 @@ async function showPlaceholder(action: string) {
   background: linear-gradient(135deg, #eff6ff, #f8fafc);
   border: 1px solid #dbeafe;
   color: #475569;
-}
-
-.phase-note {
-  color: #475569;
-  line-height: 1.8;
 }
 </style>

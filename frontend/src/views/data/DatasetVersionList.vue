@@ -4,7 +4,7 @@
       <div>
         <h3>数据集版本 / 导出记录</h3>
         <p class="page-subtitle">
-          先把训练前的数据冻结、导出和追溯界面搭起来，后续再接真实版本与导出逻辑。
+          把训练前的数据冻结、导出和追溯流程接到真实后端，为后续训练和评估绑定稳定输入。
         </p>
       </div>
       <div class="header-actions">
@@ -49,6 +49,7 @@
       @detail="handleVersionDetail"
       @export="handleVersionExport"
       @compare="handleVersionCompare"
+      @delete="handleDeleteVersion"
     />
 
     <DatasetExportRecordTable
@@ -58,6 +59,7 @@
       @detail="handleExportDetail"
       @download="handleExportDownload"
       @reuse="handleExportReuse"
+      @delete="handleDeleteExport"
     />
 
     <DatasetVersionDetailDrawer
@@ -80,8 +82,15 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { getDatasets } from '@/api/dataset'
+import {
+  createDatasetExport,
+  deleteDatasetExport,
+  deleteDatasetVersion,
+  getDatasetExports,
+  getDatasetVersions,
+} from '@/api/datasetVersion'
 import type { Dataset } from '@/types/dataset'
 import type {
   DatasetExportRecord,
@@ -100,10 +109,9 @@ import {
   datasetVersionListPlanItems,
 } from './datasetVersionConfig'
 import {
-  findMockVersionByName,
-  mockDatasetExportRecords,
-  mockDatasetVersions,
-} from './datasetVersionMock'
+  mapDatasetExportRecord,
+  mapDatasetVersionSummary,
+} from './datasetVersionValidation'
 
 const router = useRouter()
 const datasets = ref<Dataset[]>([])
@@ -112,21 +120,21 @@ const activeView = ref<'versions' | 'exports'>('versions')
 const detailVisible = ref(false)
 const exportDialogVisible = ref(false)
 const selectedVersion = ref<DatasetVersionSummary | null>(null)
-const mockVersions = ref<DatasetVersionSummary[]>(mockDatasetVersions)
-const mockExportRecords = ref<DatasetExportRecord[]>(mockDatasetExportRecords)
+const versionRows = ref<DatasetVersionSummary[]>([])
+const exportRows = ref<DatasetExportRecord[]>([])
 
 const overviewCards = computed<DatasetVersionOverviewCard[]>(() =>
-  buildDatasetVersionOverviewCards(mockVersions.value, mockExportRecords.value.length),
+  buildDatasetVersionOverviewCards(versionRows.value, exportRows.value.length),
 )
 
 const planItems = datasetVersionListPlanItems
 
 const filteredVersions = computed(() =>
-  mockVersions.value.filter((item) => !selectedDatasetId.value || item.datasetId === selectedDatasetId.value),
+  versionRows.value.filter((item) => !selectedDatasetId.value || item.datasetId === selectedDatasetId.value),
 )
 
 const filteredExportRecords = computed(() =>
-  mockExportRecords.value.filter((item) => !selectedDatasetId.value || item.datasetId === selectedDatasetId.value),
+  exportRows.value.filter((item) => !selectedDatasetId.value || item.datasetId === selectedDatasetId.value),
 )
 
 onMounted(async () => {
@@ -135,7 +143,24 @@ onMounted(async () => {
   } catch {
     datasets.value = []
   }
+  await loadVersionData()
 })
+
+async function loadVersionData() {
+  try {
+    const [versions, exports] = await Promise.all([getDatasetVersions(), getDatasetExports()])
+    versionRows.value = versions.map((item) =>
+      mapDatasetVersionSummary(
+        item,
+        datasets.value.find((dataset) => dataset.id === item.dataset_id)?.name || '--',
+      ),
+    )
+    exportRows.value = exports.map((item) => mapDatasetExportRecord(item, versionRows.value))
+  } catch {
+    versionRows.value = []
+    exportRows.value = []
+  }
+}
 
 function goRules() {
   router.push('/data/versions/rules')
@@ -159,16 +184,44 @@ function handleVersionCompare(row: DatasetVersionSummary) {
   router.push({
     path: '/data/versions/compare',
     query: {
-      base: mockVersions.value[1]?.id || row.id,
+      base: versionRows.value[1]?.id || row.id,
       target: row.id,
     },
   })
 }
 
+async function handleDeleteVersion(row: DatasetVersionSummary) {
+  try {
+    await ElMessageBox.confirm(
+      `删除版本“${row.versionName}”后，关联导出记录也会一起删除，是否继续？`,
+      '删除版本',
+      {
+        type: 'warning',
+        confirmButtonText: '删除',
+        cancelButtonText: '取消',
+      },
+    )
+    await deleteDatasetVersion(row.id)
+    if (selectedVersion.value?.id === row.id) {
+      selectedVersion.value = null
+      detailVisible.value = false
+      exportDialogVisible.value = false
+    }
+    ElMessage.success(`已删除版本：${row.versionName}`)
+    await loadVersionData()
+  } catch (error) {
+    if (error === 'cancel') {
+      return
+    }
+    const message = error instanceof Error ? error.message : '删除版本失败'
+    ElMessage.error(message)
+  }
+}
+
 function handleCreateExport() {
   selectedVersion.value = filteredVersions.value[0] || null
   if (!selectedVersion.value) {
-    ElMessage.warning('当前没有可用于演示的版本数据')
+    ElMessage.warning('当前没有可用于导出的版本')
     return
   }
   exportDialogVisible.value = true
@@ -179,26 +232,63 @@ function handleExportDetail(row: DatasetExportRecord) {
 }
 
 function handleExportDownload(row: DatasetExportRecord) {
-  ElMessage.info(`已预留下载入口：${row.exportName}`)
+  ElMessage.info(`导出目录：${row.outputPath}`)
 }
 
 function handleExportReuse(row: DatasetExportRecord) {
-  const matchedVersion = findMockVersionByName(row.versionName)
+  const matchedVersion = versionRows.value.find((item) => item.versionName === row.versionName)
   if (matchedVersion) {
     selectedVersion.value = matchedVersion
     exportDialogVisible.value = true
     return
   }
-  ElMessage.info(`已预留复用入口：${row.exportName}`)
+  ElMessage.info(`未找到对应版本：${row.versionName}`)
+}
+
+async function handleDeleteExport(row: DatasetExportRecord) {
+  try {
+    await ElMessageBox.confirm(`确认删除导出记录“${row.exportName}”吗？`, '删除导出记录', {
+      type: 'warning',
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+    })
+    await deleteDatasetExport(row.id)
+    ElMessage.success(`已删除导出记录：${row.exportName}`)
+    await loadVersionData()
+  } catch (error) {
+    if (error === 'cancel') {
+      return
+    }
+    const message = error instanceof Error ? error.message : '删除导出记录失败'
+    ElMessage.error(message)
+  }
 }
 
 function handleSaveDraft(draft: ExportDraft) {
   ElMessage.success(`导出草稿已保存：${draft.exportName}`)
 }
 
-function handleSubmitExport(draft: ExportDraft) {
-  ElMessage.success(`已预演导出流程：${draft.exportName}`)
-  exportDialogVisible.value = false
+async function handleSubmitExport(draft: ExportDraft) {
+  if (!selectedVersion.value) {
+    ElMessage.warning('当前没有可导出的数据集版本')
+    return
+  }
+  try {
+    await createDatasetExport(selectedVersion.value.id, {
+      dataset_version_id: selectedVersion.value.id,
+      export_name: draft.exportName,
+      export_format: draft.exportFormat,
+      splits: draft.splits,
+      extras: draft.extras,
+      notes: draft.notes,
+    })
+    ElMessage.success(`已创建导出记录：${draft.exportName}`)
+    exportDialogVisible.value = false
+    await loadVersionData()
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '创建导出记录失败'
+    ElMessage.error(message)
+  }
 }
 </script>
 

@@ -3,6 +3,7 @@ from app.repositories.dataset import DatasetRepository, ImageRepository
 from app.repositories.annotation import AnnotationRepository
 from app.repositories.label import LabelRepository
 from app.repositories.model import MLModelRepository
+from app.repositories.dataset_version import DatasetExportRepository, DatasetVersionRepository
 from app.repositories.task import TaskRepository
 
 __all__ = [
@@ -12,5 +13,7 @@ __all__ = [
     "AnnotationRepository",
     "LabelRepository",
     "MLModelRepository",
+    "DatasetVersionRepository",
+    "DatasetExportRepository",
     "TaskRepository",
 ]

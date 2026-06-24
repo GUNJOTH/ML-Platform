@@ -15,6 +15,8 @@ export function createTask(data: {
   task_type: string
   model_id?: string
   dataset_id?: string
+  dataset_version_id?: string
+  dataset_export_id?: string
   config?: Record<string, unknown>
 }) {
   return request.post<never, Task>('/tasks', data)
@@ -50,8 +52,4 @@ export function getTaskProgress(id: string) {
 
 export function getTaskArtifacts(id: string) {
   return request.get<never, { items: TaskArtifactItem[] }>(`/tasks/${id}/artifacts`)
-}
-
-export function listDatasets() {
-  return request.get<never, Array<{ id: string; name: string }>>('/datasets')
 }

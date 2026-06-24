@@ -12,6 +12,8 @@ class TaskCreate(BaseModel):
     task_type: str
     model_id: uuid.UUID | None = None
     dataset_id: uuid.UUID | None = None
+    dataset_version_id: uuid.UUID | None = None
+    dataset_export_id: uuid.UUID | None = None
     config: dict[str, Any] | None = None
 
 
@@ -22,6 +24,8 @@ class TaskResponse(BaseModel):
     status: TaskStatus
     model_id: uuid.UUID | None
     dataset_id: uuid.UUID | None
+    dataset_version_id: uuid.UUID | None
+    dataset_export_id: uuid.UUID | None
     config: dict[str, Any] | None
     progress: int
     result: dict[str, Any] | None

@@ -15,6 +15,7 @@ from app.exceptions import TaskStateError
 from app.models.model import MLModel
 from app.models.task import TERMINAL_STATUSES, Task, TaskStatus
 from app.repositories.dataset import DatasetRepository
+from app.repositories.dataset_version import DatasetExportRepository
 from app.repositories.model import MLModelRepository
 from app.repositories.task import TaskRepository
 from app.schemas.task import TaskArtifactItem, TaskCreate
@@ -59,6 +60,8 @@ class TaskService:
             task_type=data.task_type,
             model_id=data.model_id,
             dataset_id=data.dataset_id,
+            dataset_version_id=data.dataset_version_id,
+            dataset_export_id=data.dataset_export_id,
             config=data.config,
         )
         return await self.repo.create(entity)
@@ -84,7 +87,14 @@ class TaskService:
             else:
                 raise ValueError("所选预训练模型缺少权重文件")
 
-        if entity.dataset_id:
+        if entity.dataset_export_id:
+            export_repo = DatasetExportRepository(self.session)
+            dataset_export = await export_repo.get_by_id(entity.dataset_export_id)
+            if dataset_export and dataset_export.data_yaml_path:
+                config["data_yaml_path"] = str(self._resolve_path(dataset_export.data_yaml_path))
+            else:
+                raise ValueError("Selected dataset export is missing dataset.yaml")
+        elif entity.dataset_id:
             dataset_repo = DatasetRepository(self.session)
             dataset = await dataset_repo.get_by_id(entity.dataset_id)
             if dataset and dataset.storage_path:

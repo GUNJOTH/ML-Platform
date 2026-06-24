@@ -23,11 +23,12 @@
       <el-table-column label="导出时间" width="180">
         <template #default="{ row }">{{ formatDate(row.createdAt) }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="240" fixed="right">
+      <el-table-column label="操作" width="300" fixed="right">
         <template #default="{ row }">
           <el-button link type="primary" @click="$emit('detail', row)">详情</el-button>
-          <el-button link type="success" @click="$emit('download', row)">下载</el-button>
+          <el-button link type="success" @click="$emit('download', row)">查看</el-button>
           <el-button link type="warning" @click="$emit('reuse', row)">复用配置</el-button>
+          <el-button link type="danger" @click="$emit('delete', row)">删除</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -36,6 +37,10 @@
 
 <script setup lang="ts">
 import type { DatasetExportRecord } from '@/types/dataset-version'
+import {
+  getDatasetExportStatusLabel,
+  getDatasetExportStatusTagType,
+} from '../datasetVersionValidation'
 
 defineProps<{
   records: DatasetExportRecord[]
@@ -46,24 +51,17 @@ defineEmits<{
   detail: [row: DatasetExportRecord]
   download: [row: DatasetExportRecord]
   reuse: [row: DatasetExportRecord]
+  delete: [row: DatasetExportRecord]
 }>()
 
 function statusType(status: DatasetExportRecord['status']): 'success' | 'info' | 'warning' | 'danger' {
-  const map: Record<DatasetExportRecord['status'], 'success' | 'info' | 'warning' | 'danger'> = {
-    completed: 'success',
-    processing: 'warning',
-    failed: 'danger',
-  }
-  return map[status]
+  const rawStatus = status === 'completed' ? 'success' : status === 'processing' ? 'exporting' : 'failed'
+  return getDatasetExportStatusTagType(rawStatus)
 }
 
 function statusLabel(status: DatasetExportRecord['status']): string {
-  const map: Record<DatasetExportRecord['status'], string> = {
-    completed: '已完成',
-    processing: '处理中',
-    failed: '失败',
-  }
-  return map[status]
+  const rawStatus = status === 'completed' ? 'success' : status === 'processing' ? 'exporting' : 'failed'
+  return getDatasetExportStatusLabel(rawStatus)
 }
 
 function formatDate(value: string): string {

@@ -5,6 +5,8 @@ export interface Task {
   status: string
   model_id: string | null
   dataset_id: string | null
+  dataset_version_id: string | null
+  dataset_export_id: string | null
   config: Record<string, unknown> | null
   progress: number
   result: Record<string, unknown> | null

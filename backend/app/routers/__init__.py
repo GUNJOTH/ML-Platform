@@ -1,6 +1,8 @@
 from fastapi import APIRouter
 
 from app.routers.dataset import router as dataset_router
+from app.routers.dataset_export import router as dataset_export_router
+from app.routers.dataset_version import router as dataset_version_router
 from app.routers.annotation import router as annotation_router
 from app.routers.label import router as label_router
 from app.routers.model import router as model_router
@@ -13,6 +15,8 @@ from app.routers.ws import router as ws_router
 
 api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(dataset_router)
+api_router.include_router(dataset_version_router)
+api_router.include_router(dataset_export_router)
 api_router.include_router(annotation_router)
 api_router.include_router(label_router)
 api_router.include_router(model_router)
