@@ -32,3 +32,14 @@ class ImageRepository(BaseRepository[Image]):
         )
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
+
+    async def count_by_dataset_and_split(self, dataset_id: uuid.UUID, split: str) -> int:
+        from sqlalchemy import func
+
+        stmt = (
+            select(func.count())
+            .select_from(Image)
+            .where(Image.dataset_id == dataset_id, Image.split == split)
+        )
+        result = await self.session.execute(stmt)
+        return int(result.scalar_one() or 0)

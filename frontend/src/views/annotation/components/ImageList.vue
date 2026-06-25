@@ -9,13 +9,21 @@
       @click="emit('select', image)"
     >
       <div class="image-main">
-        <span class="image-name">{{ image.filename }}</span>
-        <el-tag size="small" :type="image.draft_status === 'annotated' ? 'success' : 'info'">
-          {{ image.draft_status === 'annotated' ? '已标' : '未标' }}
-        </el-tag>
+        <div class="image-meta">
+          <span class="image-name">{{ image.filename }}</span>
+          <span class="image-split">{{ image.split || '--' }}</span>
+        </div>
+        <div class="image-actions">
+          <el-tag size="small" :type="image.draft_status === 'annotated' ? 'success' : 'info'">
+            {{ image.draft_status === 'annotated' ? '已标注' : '未标注' }}
+          </el-tag>
+          <el-button size="small" link type="danger" @click.stop="emit('delete', image)">
+            删除
+          </el-button>
+        </div>
       </div>
     </div>
-    <p v-if="images.length === 0" class="empty">无图片</p>
+    <p v-if="images.length === 0" class="empty">暂无图片</p>
   </div>
 </template>
 
@@ -29,6 +37,7 @@ defineProps<{
 
 const emit = defineEmits<{
   select: [image: WorkspaceImageListItem]
+  delete: [image: WorkspaceImageListItem]
 }>()
 </script>
 
@@ -55,11 +64,21 @@ h4 {
   color: #409eff;
 }
 
-.image-main {
+.image-main,
+.image-meta,
+.image-actions {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
+}
+
+.image-main {
+  justify-content: space-between;
+}
+
+.image-meta {
+  min-width: 0;
+  flex: 1;
 }
 
 .image-name {
@@ -67,6 +86,12 @@ h4 {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.image-split {
+  color: #909399;
+  font-size: 12px;
+  text-transform: uppercase;
 }
 
 .empty {

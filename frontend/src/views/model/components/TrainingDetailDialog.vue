@@ -1,36 +1,81 @@
 <template>
   <el-dialog :model-value="visible" title="训练详情" width="880px" @close="emit('update:visible', false)">
     <template v-if="task">
-      <el-descriptions :column="2" border size="small">
-        <el-descriptions-item label="任务名称" :span="2">{{ task.name }}</el-descriptions-item>
-        <el-descriptions-item label="状态">
-          <el-tag :type="statusTag(task.status)">{{ task.status }}</el-tag>
-        </el-descriptions-item>
-        <el-descriptions-item label="进度">{{ task.progress }}%</el-descriptions-item>
-      </el-descriptions>
-
-      <template v-if="task.status === 'completed' && task.result">
-        <el-descriptions :column="4" border size="small" style="margin-top: 12px">
-          <el-descriptions-item label="mAP50">{{ fmtMetric(task.result.map50) }}</el-descriptions-item>
-          <el-descriptions-item label="mAP50-95">{{ fmtMetric(task.result.map50_95) }}</el-descriptions-item>
-          <el-descriptions-item label="Precision">{{ fmtMetric(task.result.precision) }}</el-descriptions-item>
-          <el-descriptions-item label="Recall">{{ fmtMetric(task.result.recall) }}</el-descriptions-item>
+      <el-card class="detail-card" shadow="never">
+        <el-descriptions :column="2" border size="small">
+          <el-descriptions-item label="任务名称" :span="2">{{ task.name }}</el-descriptions-item>
+          <el-descriptions-item label="状态">
+            <el-tag :type="resolveTaskStatusTag(task.status)">{{ task.status }}</el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="进度">{{ task.progress }}%</el-descriptions-item>
+          <el-descriptions-item label="任务类型">{{ task.task_type }}</el-descriptions-item>
+          <el-descriptions-item label="创建时间">{{ formatDate(task.created_at) }}</el-descriptions-item>
+          <el-descriptions-item label="开始时间">{{ formatDate(task.started_at) }}</el-descriptions-item>
+          <el-descriptions-item label="完成时间">{{ formatDate(task.finished_at) }}</el-descriptions-item>
         </el-descriptions>
-      </template>
 
-      <div ref="chartRef" class="history-chart"></div>
+        <template v-if="context">
+          <div class="detail-section-title">训练输入</div>
+          <el-descriptions :column="2" border size="small">
+            <el-descriptions-item label="数据集">{{ context.datasetName }}</el-descriptions-item>
+            <el-descriptions-item label="预训练模型">
+              {{ context.modelName }}<span v-if="context.modelVersion !== '--'"> ({{ context.modelVersion }})</span>
+            </el-descriptions-item>
+            <el-descriptions-item label="数据集版本">{{ context.versionName }}</el-descriptions-item>
+            <el-descriptions-item label="导出记录">{{ context.exportName }}</el-descriptions-item>
+            <el-descriptions-item label="导出格式">{{ context.exportFormat }}</el-descriptions-item>
+            <el-descriptions-item label="导出时间">{{ formatDate(context.exportCreatedAt) }}</el-descriptions-item>
+            <el-descriptions-item label="dataset.yaml" :span="2">{{ context.dataYamlPath }}</el-descriptions-item>
+          </el-descriptions>
 
-      <TaskArtifactPanel
-        v-if="artifacts.length"
-        title="任务产物"
-        :artifacts="artifacts"
-      />
+          <div class="detail-section-title">训练配置</div>
+          <el-descriptions :column="3" border size="small">
+            <el-descriptions-item label="Epochs">{{ readConfigValue('epochs') }}</el-descriptions-item>
+            <el-descriptions-item label="Batch Size">{{ readConfigValue('batch_size') }}</el-descriptions-item>
+            <el-descriptions-item label="图片尺寸">{{ readConfigValue('img_size') }}</el-descriptions-item>
+            <el-descriptions-item label="优化器">{{ readConfigValue('optimizer') }}</el-descriptions-item>
+            <el-descriptions-item label="学习率">{{ readConfigValue('lr0') }}</el-descriptions-item>
+            <el-descriptions-item label="Warmup Epochs">{{ readConfigValue('warmup_epochs') }}</el-descriptions-item>
+            <el-descriptions-item label="Patience">{{ readConfigValue('patience') }}</el-descriptions-item>
+            <el-descriptions-item label="余弦学习率">{{ formatBoolean(readConfigValue('cos_lr')) }}</el-descriptions-item>
+            <el-descriptions-item label="Close Mosaic">{{ readConfigValue('close_mosaic') }}</el-descriptions-item>
+            <el-descriptions-item label="使用预训练">{{ formatBoolean(readConfigValue('pretrained')) }}</el-descriptions-item>
+            <el-descriptions-item label="Framework">{{ readConfigValue('framework') }}</el-descriptions-item>
+          </el-descriptions>
 
-      <template v-if="task.status === 'failed' && task.error_message">
-        <el-alert type="error" :closable="false" show-icon style="margin-top: 12px">
-          {{ task.error_message }}
-        </el-alert>
-      </template>
+          <div class="detail-section-title">数据摘要</div>
+          <el-descriptions :column="2" border size="small">
+            <el-descriptions-item label="图片总数">{{ context.imageCount || '--' }}</el-descriptions-item>
+            <el-descriptions-item label="标注框总数">{{ context.boxCount || '--' }}</el-descriptions-item>
+            <el-descriptions-item label="类别数">{{ context.classCount || '--' }}</el-descriptions-item>
+            <el-descriptions-item label="划分统计">{{ context.splitSummary }}</el-descriptions-item>
+            <el-descriptions-item label="类别名称" :span="2">
+              {{ context.classNames.length ? context.classNames.join(' / ') : '--' }}
+            </el-descriptions-item>
+            <el-descriptions-item label="导出备注" :span="2">{{ context.exportNotes }}</el-descriptions-item>
+          </el-descriptions>
+        </template>
+
+        <div class="detail-section-title">任务结果详情</div>
+        <template v-if="task.status === 'completed' && task.result">
+          <el-descriptions :column="4" border size="small">
+            <el-descriptions-item label="mAP50">{{ fmtMetric(task.result.map50) }}</el-descriptions-item>
+            <el-descriptions-item label="mAP50-95">{{ fmtMetric(task.result.map50_95) }}</el-descriptions-item>
+            <el-descriptions-item label="Precision">{{ fmtMetric(task.result.precision) }}</el-descriptions-item>
+            <el-descriptions-item label="Recall">{{ fmtMetric(task.result.recall) }}</el-descriptions-item>
+          </el-descriptions>
+        </template>
+
+        <div ref="chartRef" class="history-chart"></div>
+
+        <TaskArtifactPanel v-if="artifacts.length" title="任务产物" :artifacts="artifacts" />
+
+        <template v-if="task.status === 'failed' && task.error_message">
+          <el-alert type="error" :closable="false" show-icon style="margin-top: 12px">
+            {{ task.error_message }}
+          </el-alert>
+        </template>
+      </el-card>
     </template>
   </el-dialog>
 </template>
@@ -38,14 +83,16 @@
 <script setup lang="ts">
 import { nextTick, ref, watch } from 'vue'
 import * as echarts from 'echarts'
-import type { Task, TaskArtifactItem } from '@/types/task'
+import type { Task, TaskArtifactItem, TaskHistoryPoint, TrainingDetailContext } from '@/types/task'
+import { resolveTaskStatusTag } from '@/utils/task'
 import TaskArtifactPanel from './TaskArtifactPanel.vue'
 
 const props = defineProps<{
   visible: boolean
   task: Task | null
   artifacts: TaskArtifactItem[]
-  history: Array<{ epoch: number; train_loss?: number; map50?: number; map50_95?: number }>
+  history: TaskHistoryPoint[]
+  context: TrainingDetailContext | null
 }>()
 
 const emit = defineEmits<{
@@ -67,9 +114,7 @@ watch(
   { deep: true },
 )
 
-function renderChart(
-  history: Array<{ epoch: number; train_loss?: number; map50?: number; map50_95?: number }>,
-) {
+function renderChart(history: TaskHistoryPoint[]) {
   if (!chartRef.value || !history.length) {
     return
   }
@@ -110,26 +155,51 @@ function renderChart(
   })
 }
 
-function statusTag(status: string): string {
-  const map: Record<string, string> = {
-    pending: 'info',
-    running: '',
-    completed: 'success',
-    failed: 'danger',
-    cancelled: 'warning',
-  }
-  return map[status] || 'info'
-}
-
 function fmtMetric(value: unknown): string {
   if (value === undefined || value === null) {
     return '--'
   }
-  return `${((value as number) * 100).toFixed(1)}%`
+  return `${(Number(value) * 100).toFixed(1)}%`
+}
+
+function formatDate(value?: string | null): string {
+  if (!value || value === '--') {
+    return '--'
+  }
+  return new Date(value).toLocaleString()
+}
+
+function readConfigValue(key: string): string {
+  const value = props.task?.config?.[key]
+  if (value === undefined || value === null || value === '') {
+    return '--'
+  }
+  return String(value)
+}
+
+function formatBoolean(value: string): string {
+  if (value === 'true') {
+    return '是'
+  }
+  if (value === 'false') {
+    return '否'
+  }
+  return value
 }
 </script>
 
 <style scoped>
+.detail-card {
+  border: none;
+}
+
+.detail-section-title {
+  margin: 16px 0 10px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #0f172a;
+}
+
 .history-chart {
   width: 100%;
   height: 320px;

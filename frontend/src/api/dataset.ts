@@ -28,6 +28,10 @@ export function getDatasetImages(
   return request.get<never, DatasetImage[]>(`/datasets/${id}/images`, { params })
 }
 
+export function deleteDatasetImage(imageId: string) {
+  return request.delete(`/datasets/images/${imageId}`)
+}
+
 export function imageFileUrl(imageId: string): string {
   return `/api/v1/datasets/images/${imageId}/file`
 }

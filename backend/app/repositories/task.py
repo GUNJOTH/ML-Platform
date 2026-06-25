@@ -1,3 +1,5 @@
+import uuid
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -32,5 +34,28 @@ class TaskRepository(BaseRepository[Task]):
 
     async def list_by_dataset_version(self, dataset_version_id: str) -> list[Task]:
         stmt = select(Task).where(Task.dataset_version_id == dataset_version_id)
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def list_by_dataset(self, dataset_id: uuid.UUID) -> list[Task]:
+        stmt = select(Task).where(Task.dataset_id == dataset_id)
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def list_by_dataset_version_ids(
+        self, dataset_version_ids: list[uuid.UUID]
+    ) -> list[Task]:
+        if not dataset_version_ids:
+            return []
+        stmt = select(Task).where(Task.dataset_version_id.in_(dataset_version_ids))
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def list_by_dataset_export_ids(
+        self, dataset_export_ids: list[uuid.UUID]
+    ) -> list[Task]:
+        if not dataset_export_ids:
+            return []
+        stmt = select(Task).where(Task.dataset_export_id.in_(dataset_export_ids))
         result = await self.session.execute(stmt)
         return list(result.scalars().all())

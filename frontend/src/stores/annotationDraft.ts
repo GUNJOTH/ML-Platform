@@ -65,10 +65,13 @@ export const useAnnotationDraftStore = defineStore('annotationDraft', () => {
   }
 
   function setImageDraft(datasetId: string, imageId: string, boxes: BBox[]) {
-    if (!drafts.value[datasetId]) {
-      drafts.value[datasetId] = {}
+    drafts.value = {
+      ...drafts.value,
+      [datasetId]: {
+        ...(drafts.value[datasetId] || {}),
+        [imageId]: boxes.map((box) => ({ ...box })),
+      },
     }
-    drafts.value[datasetId][imageId] = boxes
     persist()
   }
 
@@ -76,8 +79,34 @@ export const useAnnotationDraftStore = defineStore('annotationDraft', () => {
     return drafts.value[datasetId]?.[imageId] || []
   }
 
+  function hasImageDraft(datasetId: string, imageId: string): boolean {
+    return Object.prototype.hasOwnProperty.call(drafts.value[datasetId] || {}, imageId)
+  }
+
   function clearDatasetDraft(datasetId: string) {
-    delete drafts.value[datasetId]
+    const next = { ...drafts.value }
+    delete next[datasetId]
+    drafts.value = next
+    persist()
+  }
+
+  function clearImageDraft(datasetId: string, imageId: string) {
+    if (!drafts.value[datasetId]) {
+      return
+    }
+    const datasetDraft = { ...drafts.value[datasetId] }
+    delete datasetDraft[imageId]
+
+    if (!Object.keys(datasetDraft).length) {
+      const next = { ...drafts.value }
+      delete next[datasetId]
+      drafts.value = next
+    } else {
+      drafts.value = {
+        ...drafts.value,
+        [datasetId]: datasetDraft,
+      }
+    }
     persist()
   }
 
@@ -91,7 +120,9 @@ export const useAnnotationDraftStore = defineStore('annotationDraft', () => {
     datasetDrafts,
     setImageDraft,
     getImageDraft,
+    hasImageDraft,
     clearDatasetDraft,
+    clearImageDraft,
     listDraftImageIds,
   }
 })

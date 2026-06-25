@@ -8,6 +8,7 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.core.dataset_files import resolve_storage_path
 from app.core.runner.process import ProcessRunner
 from app.core.storage.factory import get_storage
 from app.core.storage.paths import StoragePaths
@@ -34,15 +35,6 @@ class TaskService:
         self.session = session
         self.runner = ProcessRunner()
         self.storage = get_storage()
-
-    @staticmethod
-    def _resolve_path(path_str: str) -> Path:
-        p = Path(path_str)
-        if p.is_absolute():
-            return p
-        if p.parts and p.parts[0] == "storage":
-            return settings.storage_path.parent / p
-        return settings.storage_path / p
 
     async def list_tasks(
         self, offset: int = 0, limit: int = 20, task_type: str | None = None
@@ -83,7 +75,7 @@ class TaskService:
             model_repo = MLModelRepository(self.session)
             model = await model_repo.get_by_id(entity.model_id)
             if model and model.weight_path:
-                config["weight_path"] = str(self._resolve_path(model.weight_path))
+                config["weight_path"] = str(resolve_storage_path(model.weight_path))
             else:
                 raise ValueError("所选预训练模型缺少权重文件")
 
@@ -91,14 +83,14 @@ class TaskService:
             export_repo = DatasetExportRepository(self.session)
             dataset_export = await export_repo.get_by_id(entity.dataset_export_id)
             if dataset_export and dataset_export.data_yaml_path:
-                config["data_yaml_path"] = str(self._resolve_path(dataset_export.data_yaml_path))
+                config["data_yaml_path"] = str(resolve_storage_path(dataset_export.data_yaml_path))
             else:
                 raise ValueError("Selected dataset export is missing dataset.yaml")
         elif entity.dataset_id:
             dataset_repo = DatasetRepository(self.session)
             dataset = await dataset_repo.get_by_id(entity.dataset_id)
             if dataset and dataset.storage_path:
-                config["data_yaml_path"] = str(self._resolve_path(dataset.storage_path))
+                config["data_yaml_path"] = str(resolve_storage_path(dataset.storage_path))
             else:
                 raise ValueError("所选数据集缺少 data.yaml 配置")
 
@@ -227,7 +219,7 @@ class TaskService:
         if not weight_path_str:
             return None
 
-        source_path = self._resolve_path(weight_path_str)
+        source_path = resolve_storage_path(weight_path_str)
         if not source_path.exists():
             return None
 

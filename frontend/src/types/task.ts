@@ -22,3 +22,28 @@ export interface TaskArtifactItem {
   filename: string
   url: string
 }
+
+export interface TaskHistoryPoint {
+  epoch: number
+  train_loss?: number
+  map50?: number
+  map50_95?: number
+}
+
+export interface TrainingDetailContext {
+  datasetName: string
+  modelName: string
+  modelVersion: string
+  versionName: string
+  exportName: string
+  exportFormat: string
+  dataYamlPath: string
+  exportCreatedAt: string
+  exportNotes: string
+  splitSummary: string
+  classCount: number
+  classNames: string[]
+  imageCount: number
+  boxCount: number
+  splitCounts: Record<string, number>
+}

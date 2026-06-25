@@ -23,10 +23,17 @@ class AnnotationResponse(BaseModel):
     label_id: uuid.UUID
     annotation_type: str
     data: dict[str, Any]
+    label_name: str | None = None
+    color: str | None = None
     created_at: datetime
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class ImageAnnotationStatusResponse(BaseModel):
+    image_id: uuid.UUID
+    annotated: bool
 
 
 class AnnotationBatchCreate(BaseModel):

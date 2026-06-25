@@ -4,6 +4,8 @@ export interface Annotation {
   label_id: string
   annotation_type: string
   data: Record<string, number>
+  label_name?: string
+  color?: string
   created_at: string
   updated_at: string
 }

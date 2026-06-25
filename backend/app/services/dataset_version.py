@@ -14,6 +14,7 @@ import yaml
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.core.dataset_files import extract_class_names, read_yaml_payload, resolve_storage_path
 from app.core.storage.factory import get_storage
 from app.core.storage.paths import StoragePaths
 from app.exceptions import NotFoundError, ValidationError
@@ -277,17 +278,15 @@ class DatasetVersionService:
         if not dataset.storage_path:
             return None
 
-        data_yaml_path = self._resolve_path(dataset.storage_path)
+        data_yaml_path = resolve_storage_path(dataset.storage_path)
         if not data_yaml_path.exists():
             return None
 
-        with data_yaml_path.open("r", encoding="utf-8") as fh:
-            payload = yaml.safe_load(fh) or {}
-
-        class_names = self._extract_class_names(payload)
+        payload = read_yaml_payload(data_yaml_path)
+        class_names = extract_class_names(payload)
         path_root = payload.get("path")
         dataset_root = (
-            self._resolve_path(path_root)
+            resolve_storage_path(path_root)
             if isinstance(path_root, str) and path_root
             else data_yaml_path.parent
         )
@@ -520,7 +519,7 @@ class DatasetVersionService:
                 if image.split not in data.splits:
                     continue
 
-                source_path = self._resolve_path(image.file_path)
+                source_path = resolve_storage_path(image.file_path)
                 if not source_path.exists():
                     continue
 
@@ -617,15 +616,6 @@ class DatasetVersionService:
         slug = re.sub(r"[^a-zA-Z0-9]+", "_", value).strip("_").lower()
         return slug or "dataset_version"
 
-    @staticmethod
-    def _resolve_path(path_str: str) -> Path:
-        path = Path(path_str)
-        if path.is_absolute():
-            return path
-        if path.parts and path.parts[0] == "storage":
-            return settings.storage_path.parent / path
-        return settings.storage_path / path
-
     @classmethod
     def _resolve_dataset_subpath(cls, dataset_root: Path, path_str: str) -> Path:
         path = Path(path_str)
@@ -641,18 +631,6 @@ class DatasetVersionService:
             parts[parts.index("images")] = "labels"
             return cls._resolve_dataset_subpath(dataset_root, str(Path(*parts)))
         return cls._resolve_dataset_subpath(dataset_root, str(Path("labels") / image_path.name))
-
-    @staticmethod
-    def _extract_class_names(payload: dict[str, Any]) -> list[str]:
-        names = payload.get("names")
-        if isinstance(names, list):
-            return [str(item) for item in names]
-        if isinstance(names, dict):
-            return [str(name) for _, name in sorted(names.items(), key=lambda item: int(item[0]))]
-        nc = payload.get("nc")
-        if isinstance(nc, int) and nc > 0:
-            return [f"class_{index}" for index in range(nc)]
-        return []
 
     @staticmethod
     def _iter_image_files(image_dir: Path) -> list[Path]:

@@ -3,8 +3,7 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
-import yaml
-
+from app.core.dataset_files import extract_class_names, read_image_size, read_yaml_payload
 from app.core.storage.paths import StoragePaths
 
 logger = logging.getLogger(__name__)
@@ -91,20 +90,34 @@ class DatasetImporter:
         logger.info("Generated data.yaml at %s", yaml_path)
         return str(yaml_path)
 
-    def list_images(self, dataset_id: str, split: str) -> list[dict[str, str]]:
+    def list_images(self, dataset_id: str, split: str) -> list[dict[str, Any]]:
         root = StoragePaths.dataset_root(dataset_id)
         images_dir = self._find_split_dir(root, split)
         if images_dir:
             return [
-                {"filename": f.name, "path": str(f)}
+                self._build_image_entry(f)
                 for f in sorted(images_dir.iterdir())
                 if f.suffix.lower() in _IMAGE_EXTS
             ]
         return [
-            {"filename": f.name, "path": str(f)}
+            self._build_image_entry(f)
             for f in sorted(root.rglob("*"))
             if f.suffix.lower() in _IMAGE_EXTS
         ]
+
+    @classmethod
+    def _build_image_entry(cls, path: Path) -> dict[str, Any]:
+        width, height = cls._read_image_size(path)
+        return {
+            "filename": path.name,
+            "path": str(path),
+            "width": width,
+            "height": height,
+        }
+
+    @staticmethod
+    def _read_image_size(path: Path) -> tuple[int, int]:
+        return read_image_size(path)
 
     @staticmethod
     def _count_images(images_dir: Path) -> int:
@@ -121,13 +134,7 @@ class DatasetImporter:
 
     @staticmethod
     def _parse_classes(yaml_path: Path) -> list[str]:
-        data = yaml.safe_load(yaml_path.read_text())
-        names = data.get("names", {})
-        if isinstance(names, dict):
-            return [names[k] for k in sorted(names.keys())]
-        if isinstance(names, list):
-            return names
-        return []
+        return extract_class_names(read_yaml_payload(yaml_path))
 
     @staticmethod
     def _find_split_dir(root: Path, split: str) -> Path | None:

@@ -4,6 +4,7 @@ export interface WorkspaceImageItem {
   id: string
   filename: string
   file_path: string
+  split?: string
   annotation_status?: string
 }
 
@@ -35,4 +36,5 @@ export type DraftStore = Map<string, BBox[]>
 export interface ImageCanvasExpose {
   updateSelectedLabel: (labelId: string, labelName: string, color: string) => void
   selectMode: () => void
+  drawMode: () => void
 }

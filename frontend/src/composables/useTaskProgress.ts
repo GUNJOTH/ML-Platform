@@ -1,4 +1,5 @@
 import { ref, onUnmounted } from 'vue'
+import { getTaskProgress } from '@/api/task'
 
 export function useTaskProgress(taskId: string) {
   const progress = ref(0)
@@ -44,8 +45,7 @@ export function useTaskProgress(taskId: string) {
     if (pollTimer) return
     pollTimer = setInterval(async () => {
       try {
-        const res = await fetch(`/api/v1/tasks/${taskId}/progress`)
-        const data = await res.json()
+        const data = await getTaskProgress(taskId)
         progress.value = data.progress || 0
       } catch {
         // silent retry

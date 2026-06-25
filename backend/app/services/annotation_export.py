@@ -5,15 +5,15 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-import yaml
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.dataset_files import extract_class_names, read_image_size, read_yaml_payload, resolve_storage_path
 from app.core.storage.paths import StoragePaths
 from app.exceptions import NotFoundError
 from app.models.dataset import Dataset, Image, Label
 from app.repositories.dataset import DatasetRepository, ImageRepository
 from app.repositories.label import LabelRepository
-from app.config import settings
+import yaml
 
 logger = logging.getLogger(__name__)
 
@@ -73,14 +73,10 @@ class AnnotationExportService:
         yaml_path = self._resolve_source_yaml(source)
         if yaml_path and yaml_path.exists():
             try:
-                payload = yaml.safe_load(yaml_path.read_text(encoding="utf-8")) or {}
-            except (OSError, yaml.YAMLError):
+                payload = read_yaml_payload(yaml_path)
+            except Exception:
                 payload = {}
-            names = payload.get("names")
-            if isinstance(names, dict):
-                return [str(name) for _, name in sorted(names.items(), key=lambda item: int(item[0]))]
-            if isinstance(names, list):
-                return [str(name) for name in names]
+            return extract_class_names(payload)
 
         return []
 
@@ -96,12 +92,7 @@ class AnnotationExportService:
     def _resolve_source_yaml(source: Dataset) -> Path | None:
         if not source.storage_path:
             return None
-        path = Path(source.storage_path)
-        if path.is_absolute():
-            return path
-        if path.parts and path.parts[0] == "storage":
-            return settings.storage_path.parent / path
-        return settings.storage_path / path
+        return resolve_storage_path(source.storage_path)
 
     async def _create_new_dataset(
         self, source: Dataset, class_names: list[str]
@@ -150,12 +141,18 @@ class AnnotationExportService:
 
     @staticmethod
     def _resolve_image_path(path_str: str) -> Path:
-        path = Path(path_str)
-        if path.is_absolute():
-            return path
-        if path.parts and path.parts[0] == "storage":
-            return settings.storage_path.parent / path
-        return settings.storage_path / path
+        return resolve_storage_path(path_str)
+
+    @classmethod
+    def _resolve_image_size(cls, image: Image) -> tuple[int, int]:
+        if image.width > 0 and image.height > 0:
+            return image.width, image.height
+
+        image_path = cls._resolve_image_path(image.file_path)
+        if not image_path.exists():
+            return 0, 0
+
+        return read_image_size(image_path)
 
     def _write_yolo_labels(
         self,
@@ -173,8 +170,9 @@ class AnnotationExportService:
             label_dir.mkdir(parents=True, exist_ok=True)
             label_file = label_dir / (Path(img.filename).stem + ".txt")
 
-            img_w = img.width if img.width > 0 else 640
-            img_h = img.height if img.height > 0 else 640
+            img_w, img_h = self._resolve_image_size(img)
+            if img_w <= 0 or img_h <= 0:
+                continue
 
             lines = [
                 self._bbox_to_yolo_line(

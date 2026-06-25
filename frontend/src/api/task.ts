@@ -1,6 +1,6 @@
 import request from './request'
 import type { Task } from '@/types/task'
-import type { TaskArtifactItem } from '@/types/task'
+import type { TaskArtifactItem, TaskHistoryPoint } from '@/types/task'
 
 export function getTasks(params?: { page?: number; page_size?: number; task_type?: string }) {
   return request.get<never, Task[]>('/tasks', { params })
@@ -39,7 +39,7 @@ export function deleteTask(id: string) {
 }
 
 export function getTaskHistory(id: string) {
-  return request.get<never, Array<{ epoch: number; train_loss?: number; map50?: number; map50_95?: number }>>(`/tasks/${id}/history`)
+  return request.get<never, TaskHistoryPoint[]>(`/tasks/${id}/history`)
 }
 
 export function exportTaskModel(id: string) {

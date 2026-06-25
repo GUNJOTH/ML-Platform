@@ -80,6 +80,15 @@ async def list_dataset_images(
     )
 
 
+@router.delete("/images/{image_id}", status_code=204, summary="删除数据集图片")
+async def delete_dataset_image(
+    image_id: uuid.UUID, service: DatasetService = Depends(get_service)
+):
+    deleted = await service.delete_image(image_id)
+    if not deleted:
+        raise NotFoundError("Image not found")
+
+
 @router.post("/{dataset_id}/upload-zip", summary="上传数据集压缩包")
 async def upload_dataset_zip(
     dataset_id: uuid.UUID,

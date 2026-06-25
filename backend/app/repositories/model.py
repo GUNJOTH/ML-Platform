@@ -26,3 +26,12 @@ class MLModelRepository(BaseRepository[MLModel]):
         stmt = stmt.offset(offset).limit(limit).order_by(MLModel.created_at.desc())
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
+
+    async def list_by_dataset(self, dataset_id: uuid.UUID) -> list[MLModel]:
+        stmt = (
+            select(MLModel)
+            .where(MLModel.dataset_id == dataset_id)
+            .order_by(MLModel.created_at.desc())
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())

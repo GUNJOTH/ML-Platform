@@ -1,9 +1,12 @@
 import { computed, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { getDatasets, getDatasetImages, imageFileUrl } from '@/api/dataset'
+import { getAnnotations } from '@/api/annotation'
+import { deleteDatasetImage, getDataset, getDatasets, getDatasetImages, imageFileUrl } from '@/api/dataset'
 import { getDatasetLabels } from '@/api/label'
 import type { BBox } from '@/composables/useCanvas'
 import { useAnnotationDraftStore } from '@/stores/annotationDraft'
+import type { Annotation } from '@/types/annotation'
+import type { Dataset } from '@/types/dataset'
 import type {
   AnnotationViewData,
   DraftStore,
@@ -23,16 +26,32 @@ function boxesToAnnotations(boxes: BBox[]): AnnotationViewData[] {
   }))
 }
 
+function annotationToBox(annotation: Annotation, labels: WorkspaceLabelItem[]): BBox {
+  const matchedLabel = labels.find((label) => label.id === annotation.label_id) || null
+  return {
+    id: annotation.id,
+    x: Number(annotation.data.x || 0),
+    y: Number(annotation.data.y || 0),
+    width: Number(annotation.data.width || 0),
+    height: Number(annotation.data.height || 0),
+    labelId: annotation.label_id,
+    labelName: matchedLabel?.name || annotation.label_id,
+    color: matchedLabel?.color || '#FF0000',
+  }
+}
+
 export function useAnnotationWorkspace(datasetId: { value: string }) {
   const draftStoreApi = useAnnotationDraftStore()
 
   const datasetOptions = ref<WorkspaceDatasetOption[]>([])
+  const datasetDetail = ref<Dataset | null>(null)
   const images = ref<WorkspaceImageItem[]>([])
   const labels = ref<WorkspaceLabelItem[]>([])
   const selectedImageId = ref('')
   const currentImageSrc = ref<string | null>(null)
   const currentAnnotations = ref<AnnotationViewData[]>([])
   const currentLabel = ref<WorkspaceLabelItem | null>(null)
+  const persistedBoxes = ref<Map<string, BBox[]>>(new Map())
 
   const draftStore = computed<DraftStore>(() => {
     const entries = Object.entries(draftStoreApi.datasetDrafts(datasetId.value))
@@ -40,13 +59,13 @@ export function useAnnotationWorkspace(datasetId: { value: string }) {
   })
 
   const annotatedCount = computed(() =>
-    [...draftStore.value.values()].filter((boxes) => boxes.length > 0).length,
+    images.value.filter((image) => resolveImageBoxes(image.id).length > 0).length,
   )
 
   const totalBoxCount = computed(() => {
     let total = 0
-    for (const boxes of draftStore.value.values()) {
-      total += boxes.length
+    for (const image of images.value) {
+      total += resolveImageBoxes(image.id).length
     }
     return total
   })
@@ -54,10 +73,7 @@ export function useAnnotationWorkspace(datasetId: { value: string }) {
   const imagesWithStatus = computed<WorkspaceImageListItem[]>(() =>
     images.value.map((image) => ({
       ...image,
-      draft_status:
-        draftStoreApi.getImageDraft(datasetId.value, image.id).length > 0
-          ? 'annotated'
-          : 'unannotated',
+      draft_status: resolveImageBoxes(image.id).length > 0 ? 'annotated' : 'unannotated',
     })),
   )
 
@@ -68,8 +84,8 @@ export function useAnnotationWorkspace(datasetId: { value: string }) {
   const hasPreviousImage = computed(() => selectedImageIndex.value > 0)
   const hasNextImage = computed(
     () =>
-      selectedImageIndex.value >= 0
-      && selectedImageIndex.value < imagesWithStatus.value.length - 1,
+      selectedImageIndex.value >= 0 &&
+      selectedImageIndex.value < imagesWithStatus.value.length - 1,
   )
 
   async function loadDatasetOptions() {
@@ -82,20 +98,44 @@ export function useAnnotationWorkspace(datasetId: { value: string }) {
 
   async function loadData() {
     try {
-      const [imageList, labelList] = await Promise.all([
+      const [imageList, labelList, dataset] = await Promise.all([
         getDatasetImages(datasetId.value),
         getDatasetLabels(datasetId.value),
+        getDataset(datasetId.value),
       ])
       images.value = imageList
       labels.value = labelList
+      datasetDetail.value = dataset
       if (labels.value.length > 0) {
         currentLabel.value = labels.value[0]
+      } else {
+        currentLabel.value = null
       }
+      await loadPersistedAnnotations()
       restoreSelection()
     } catch {
+      datasetDetail.value = null
       images.value = []
       labels.value = []
+      persistedBoxes.value = new Map()
     }
+  }
+
+  async function loadPersistedAnnotations() {
+    const entries: Array<[string, BBox[]]> = await Promise.all(
+      images.value.map(async (image) => {
+        try {
+          const annotations = await getAnnotations(image.id)
+          return [
+            image.id,
+            annotations.map((annotation) => annotationToBox(annotation, labels.value)),
+          ] as [string, BBox[]]
+        } catch {
+          return [image.id, []]
+        }
+      }),
+    )
+    persistedBoxes.value = new Map(entries)
   }
 
   function restoreSelection() {
@@ -107,24 +147,27 @@ export function useAnnotationWorkspace(datasetId: { value: string }) {
     }
 
     const active =
-      images.value.find((image) => image.id === selectedImageId.value)
-      ?? findFirstAnnotatedImage()
-      ?? images.value[0]
+      images.value.find((image) => image.id === selectedImageId.value) ??
+      findFirstAnnotatedImage() ??
+      images.value[0]
     handleSelectImage(active)
   }
 
   function findFirstAnnotatedImage(): WorkspaceImageItem | undefined {
-    return images.value.find(
-      (image) => draftStoreApi.getImageDraft(datasetId.value, image.id).length > 0,
-    )
+    return images.value.find((image) => resolveImageBoxes(image.id).length > 0)
+  }
+
+  function resolveImageBoxes(imageId: string): BBox[] {
+    if (draftStoreApi.hasImageDraft(datasetId.value, imageId)) {
+      return draftStoreApi.getImageDraft(datasetId.value, imageId)
+    }
+    return persistedBoxes.value.get(imageId) || []
   }
 
   function handleSelectImage(image: WorkspaceImageItem) {
     selectedImageId.value = image.id
     currentImageSrc.value = imageFileUrl(image.id)
-    currentAnnotations.value = boxesToAnnotations(
-      draftStoreApi.getImageDraft(datasetId.value, image.id),
-    )
+    currentAnnotations.value = boxesToAnnotations(resolveImageBoxes(image.id))
   }
 
   function handleSelectLabel(label: WorkspaceLabelItem) {
@@ -174,15 +217,22 @@ export function useAnnotationWorkspace(datasetId: { value: string }) {
       handleSelectImage(nextImage)
       return
     }
-    ElMessage.info('当前数据集草稿都已经标过了')
+    ElMessage.info('当前数据集图片都已经有标注或草稿')
   }
 
   function clearDatasetDraft() {
     draftStoreApi.clearDatasetDraft(datasetId.value)
   }
 
+  async function removeImage(imageId: string) {
+    await deleteDatasetImage(imageId)
+    draftStoreApi.clearImageDraft(datasetId.value, imageId)
+    await loadData()
+  }
+
   return {
     datasetOptions,
+    datasetDetail,
     images,
     labels,
     selectedImageId,
@@ -206,5 +256,6 @@ export function useAnnotationWorkspace(datasetId: { value: string }) {
     goNextImage,
     goNextUnannotatedImage,
     clearDatasetDraft,
+    removeImage,
   }
 }

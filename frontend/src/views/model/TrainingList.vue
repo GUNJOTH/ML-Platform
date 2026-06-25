@@ -10,7 +10,7 @@
       <el-table-column prop="task_type" label="类型" width="100" />
       <el-table-column label="状态" width="120">
         <template #default="{ row }">
-          <el-tag :type="statusTag(row.status)">{{ row.status }}</el-tag>
+          <el-tag :type="resolveTaskStatusTag(row.status)">{{ row.status }}</el-tag>
         </template>
       </el-table-column>
       <el-table-column label="进度" width="160">
@@ -30,28 +30,36 @@
             type="danger"
             link
             @click="handleCancel(row.id)"
-          >取消</el-button>
+          >
+            取消
+          </el-button>
           <el-button
             v-if="row.status === 'completed'"
             size="small"
             type="success"
             link
             @click="handleExport(row.id)"
-          >导出</el-button>
+          >
+            导出
+          </el-button>
           <el-button
             v-if="row.status === 'completed' || row.status === 'failed'"
             size="small"
             type="primary"
             link
             @click="handleDetail(row)"
-          >详情</el-button>
+          >
+            详情
+          </el-button>
           <el-button
             v-if="row.status !== 'running'"
             size="small"
             type="danger"
             link
             @click="handleDelete(row.id)"
-          >删除</el-button>
+          >
+            删除
+          </el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -63,6 +71,7 @@
       :task="selectedTask"
       :artifacts="selectedArtifacts"
       :history="selectedHistory"
+      :context="selectedContext"
     />
   </div>
 </template>
@@ -70,16 +79,24 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { buildTrainingDetailContext } from '@/composables/useTrainingDetailContext'
+import { resolveTaskStatusTag } from '@/utils/task'
 import {
   cancelTask,
   deleteTask,
   exportTaskModel,
   getTaskArtifacts,
   getTaskHistory,
+  getTaskProgress,
   getTasks,
   syncTask,
 } from '@/api/task'
-import type { Task, TaskArtifactItem } from '@/types/task'
+import type {
+  Task,
+  TaskArtifactItem,
+  TaskHistoryPoint,
+  TrainingDetailContext,
+} from '@/types/task'
 import TrainingDetailDialog from './components/TrainingDetailDialog.vue'
 import TrainingForm from './components/TrainingForm.vue'
 
@@ -90,9 +107,8 @@ const liveProgress = ref(0)
 const detailVisible = ref(false)
 const selectedTask = ref<Task | null>(null)
 const selectedArtifacts = ref<TaskArtifactItem[]>([])
-const selectedHistory = ref<
-  Array<{ epoch: number; train_loss?: number; map50?: number; map50_95?: number }>
->([])
+const selectedHistory = ref<TaskHistoryPoint[]>([])
+const selectedContext = ref<TrainingDetailContext | null>(null)
 
 let ws: WebSocket | null = null
 let pollTimer: ReturnType<typeof setInterval> | null = null
@@ -105,6 +121,7 @@ async function loadTasks() {
   } catch {
     tasks.value = []
   }
+
   const runningTasks = tasks.value.filter((task) => task.status === 'running')
   for (const task of runningTasks) {
     try {
@@ -113,6 +130,7 @@ async function loadTasks() {
       // still running
     }
   }
+
   if (runningTasks.length) {
     tasks.value = await getTasks({ task_type: 'training' })
     const stillRunning = tasks.value.find((task) => task.status === 'running')
@@ -166,8 +184,7 @@ function startPolling(taskId: string) {
   }
   pollTimer = setInterval(async () => {
     try {
-      const res = await fetch(`/api/v1/tasks/${taskId}/progress`)
-      const data = await res.json()
+      const data = await getTaskProgress(taskId)
       liveProgress.value = data.progress || 0
       if (data.progress >= 100) {
         cleanup()
@@ -195,29 +212,22 @@ async function handleCancel(id: string) {
   loadTasks()
 }
 
-function statusTag(status: string): string {
-  const map: Record<string, string> = {
-    pending: 'info',
-    running: '',
-    completed: 'success',
-    failed: 'danger',
-    cancelled: 'warning',
-  }
-  return map[status] || 'info'
-}
-
 async function handleDetail(task: Task) {
   selectedTask.value = task
   selectedArtifacts.value = []
   selectedHistory.value = []
+  selectedContext.value = null
   detailVisible.value = true
+
   try {
-    const [history, artifacts] = await Promise.all([
+    const [history, artifacts, context] = await Promise.all([
       getTaskHistory(task.id),
       getTaskArtifacts(task.id),
+      buildTrainingDetailContext(task),
     ])
     selectedHistory.value = history
     selectedArtifacts.value = artifacts.items
+    selectedContext.value = context
   } catch {
     // no detail available
   }
@@ -225,7 +235,7 @@ async function handleDetail(task: Task) {
 
 async function handleDelete(id: string) {
   try {
-    await ElMessageBox.confirm('确定删除该训练任务？', '确认', { type: 'warning' })
+    await ElMessageBox.confirm('确定删除该训练任务吗？', '确认', { type: 'warning' })
     await deleteTask(id)
     ElMessage.success('已删除')
     loadTasks()
