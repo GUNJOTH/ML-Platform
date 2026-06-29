@@ -32,6 +32,15 @@
       </el-col>
     </el-row>
 
+    <SplitPlanSummaryCard
+      title="划分落地确认"
+      :strategy-label="splitPlan.strategyLabel"
+      :subtitle="splitPlan.subtitle"
+      :items="splitPlan.items"
+      :notes="splitPlan.notes"
+      class="section-card"
+    />
+
     <el-card class="section-card">
       <template #header>问题列表</template>
       <el-table :data="validationRows" border stripe>
@@ -59,7 +68,11 @@ import type {
   DatasetVersionApiRecord,
   DatasetVersionValidationResult,
 } from '@/types/dataset-version'
-import { getDatasetVersionIssueLabel } from './datasetVersionValidation'
+import SplitPlanSummaryCard from './components/SplitPlanSummaryCard.vue'
+import {
+  buildVersionSplitPlanSummary,
+  getDatasetVersionIssueLabel,
+} from './datasetVersionValidation'
 
 const route = useRoute()
 const router = useRouter()
@@ -78,6 +91,17 @@ const summaryCards = computed(() => {
     { label: '标注框', value: String(summary.box_count || 0), help: '当前版本内的有效标注框数量' },
   ]
 })
+
+const splitPlan = computed(() =>
+  buildVersionSplitPlanSummary({
+    split_strategy: version.value?.split_strategy || 'reuse-existing',
+    split_config: version.value?.split_config || {},
+    stats_snapshot: {
+      ...(version.value?.stats_snapshot || {}),
+      split_counts: validationResult.value?.summary?.split_counts || version.value?.stats_snapshot?.split_counts || {},
+    },
+  }),
+)
 
 const validationRows = computed(() => {
   const rows = [

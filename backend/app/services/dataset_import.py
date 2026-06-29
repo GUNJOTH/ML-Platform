@@ -1,7 +1,10 @@
 import logging
+import os
 import zipfile
 from pathlib import Path
 from typing import Any
+
+import yaml
 
 from app.core.dataset_files import extract_class_names, read_image_size, read_yaml_payload
 from app.core.storage.paths import StoragePaths
@@ -16,23 +19,94 @@ class DatasetImporter:
     dataset structure on disk. Not a Service — does not touch the database.
     """
 
-    async def upload_and_extract(self, dataset_id: str, content: bytes) -> dict[str, Any]:
+    async def upload_and_extract(self, dataset_id: str, source) -> dict[str, Any]:
         upload_path = StoragePaths.upload_path(f"{dataset_id}.zip")
         upload_path.parent.mkdir(parents=True, exist_ok=True)
-        upload_path.write_bytes(content)
+        total = 0
+        with upload_path.open("wb") as f:
+            while True:
+                chunk = source.read(1024 * 1024)
+                if not chunk:
+                    break
+                f.write(chunk)
+                total += len(chunk)
         try:
             self._extract_zip(dataset_id, upload_path)
         finally:
             upload_path.unlink(missing_ok=True)
-        return {"status": "extracted", "size_bytes": len(content)}
+        return {"status": "extracted", "size_bytes": total}
 
     def _extract_zip(self, dataset_id: str, zip_path: Path) -> Path:
         target = StoragePaths.dataset_root(dataset_id)
         target.mkdir(parents=True, exist_ok=True)
+        resolved_target = target.resolve()
+
         with zipfile.ZipFile(zip_path, "r") as zf:
-            zf.extractall(target)
+            archive_root = self._detect_archive_root(zf.infolist())
+            for member in zf.infolist():
+                relative_name = self._normalize_archive_member_name(
+                    member.filename,
+                    archive_root=archive_root,
+                )
+                if not relative_name:
+                    continue
+
+                member_path = target / relative_name
+                resolved = member_path.resolve()
+                # Prevent zip-slip: member must stay inside target directory
+                if not str(resolved).startswith(str(resolved_target) + os.sep):
+                    logger.warning("Skipping suspicious zip entry: %s", member.filename)
+                    continue
+                if member.is_dir():
+                    resolved.mkdir(parents=True, exist_ok=True)
+                else:
+                    resolved.parent.mkdir(parents=True, exist_ok=True)
+                    with zf.open(member) as src, open(resolved, "wb") as dst:
+                        dst.write(src.read())
+
         logger.info("Extracted dataset %s to %s", dataset_id, target)
         return target
+
+    @staticmethod
+    def _detect_archive_root(members: list[zipfile.ZipInfo]) -> str | None:
+        root_names: set[str] = set()
+        for member in members:
+            normalized = member.filename.replace("\\", "/").lstrip("./")
+            if not normalized:
+                continue
+            parts = [part for part in normalized.split("/") if part]
+            if not parts:
+                continue
+            root_names.add(parts[0])
+            if len(root_names) > 1:
+                return None
+
+        if len(root_names) != 1:
+            return None
+
+        root_name = next(iter(root_names))
+        if not root_name.lower().endswith((".zip", ".yaml", ".yml")):
+            return root_name
+        return None
+
+    @staticmethod
+    def _normalize_archive_member_name(
+        filename: str,
+        *,
+        archive_root: str | None,
+    ) -> str:
+        normalized = filename.replace("\\", "/").lstrip("./")
+        if not normalized:
+            return ""
+
+        if archive_root:
+            prefix = f"{archive_root}/"
+            if normalized == archive_root:
+                return ""
+            if normalized.startswith(prefix):
+                normalized = normalized[len(prefix):]
+
+        return normalized
 
     def detect_structure(self, dataset_id: str) -> dict[str, Any]:
         root = StoragePaths.dataset_root(dataset_id)
@@ -81,8 +155,21 @@ class DatasetImporter:
             "nc": len(classes),
         }
 
-        for split, dirname in (("train", "train"), ("val", "valid"), ("test", "test")):
-            images_dir = self._find_split_dir(root, dirname) or self._find_split_dir(root, "val")
+        split_aliases = {
+            "train": ("train",),
+            "val": ("val", "valid"),
+            "test": ("test",),
+        }
+
+        for split, candidates in split_aliases.items():
+            images_dir = next(
+                (
+                    resolved
+                    for candidate in candidates
+                    if (resolved := self._find_split_dir(root, candidate)) is not None
+                ),
+                None,
+            )
             if images_dir:
                 data[split] = str(images_dir)
 
@@ -125,9 +212,29 @@ class DatasetImporter:
 
     @staticmethod
     def _find_data_yaml(root: Path) -> Path | None:
+        preferred: list[Path] = []
+        fallback: list[Path] = []
+
         for candidate in root.rglob("data.yaml"):
-            return candidate
+            preferred.append(candidate)
         for candidate in root.rglob("*.yaml"):
+            if candidate not in preferred:
+                fallback.append(candidate)
+
+        for candidate in [*preferred, *fallback]:
+            try:
+                payload = read_yaml_payload(candidate)
+            except Exception:
+                continue
+            class_names = extract_class_names(payload)
+            has_split = any(
+                isinstance(payload.get(key), str) and payload.get(key)
+                for key in ("train", "val", "valid", "test")
+            )
+            if class_names and has_split:
+                return candidate
+
+        for candidate in [*preferred, *fallback]:
             if "names" in candidate.read_text(errors="ignore"):
                 return candidate
         return None
@@ -138,11 +245,27 @@ class DatasetImporter:
 
     @staticmethod
     def _find_split_dir(root: Path, split: str) -> Path | None:
-        for candidate in root.rglob(f"{split}/images"):
-            return candidate
-        for candidate in root.rglob(split):
+        direct_candidate = root / "images" / split
+        if direct_candidate.is_dir():
+            return direct_candidate
+
+        for images_dir in root.rglob("images"):
+            if not images_dir.is_dir():
+                continue
+            candidate = images_dir / split
             if candidate.is_dir():
                 return candidate
+
+        for candidate in root.rglob(split):
+            if candidate.is_dir() and candidate.parent.name == "images":
+                return candidate
+
+        for candidate in root.rglob(split):
+            if not candidate.is_dir():
+                continue
+            images_dir = candidate / "images"
+            if images_dir.is_dir():
+                return images_dir
         return None
 
     @staticmethod

@@ -48,6 +48,15 @@
       </el-col>
     </el-row>
 
+    <SplitPlanSummaryCard
+      title="最终落地划分"
+      :strategy-label="splitPlan.strategyLabel"
+      :subtitle="splitPlan.subtitle"
+      :items="splitPlan.items"
+      :notes="splitPlan.notes"
+      class="section-card"
+    />
+
     <el-card class="section-card">
       <template #header>校验摘要</template>
       <div class="summary-grid">
@@ -68,7 +77,9 @@ import type {
   DatasetExportRecordDetail,
   DatasetVersionApiRecord,
 } from '@/types/dataset-version'
+import SplitPlanSummaryCard from './components/SplitPlanSummaryCard.vue'
 import {
+  buildExportSplitPlanSummary,
   collectValidationMessages,
   getDatasetExportStatusLabel,
   getDatasetExportStatusTagType,
@@ -106,6 +117,13 @@ const notesText = computed(() => {
   const notes = record.value?.split_config?.notes
   return typeof notes === 'string' && notes ? notes : '--'
 })
+
+const splitPlan = computed(() =>
+  buildExportSplitPlanSummary({
+    split_config: record.value?.split_config || {},
+    validation_summary: record.value?.validation_summary || null,
+  }),
+)
 
 const validationMessages = computed(() =>
   collectValidationMessages(record.value?.validation_summary || null, EMPTY_VALIDATION_TEXT),

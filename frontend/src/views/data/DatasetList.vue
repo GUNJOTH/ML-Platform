@@ -67,11 +67,6 @@
       </template>
     </el-dialog>
 
-    <ImportConfirmDialog
-      v-model:visible="showConfirm"
-      :detect-result="detectResult"
-      @confirm="doConfirm"
-    />
   </div>
 </template>
 
@@ -83,13 +78,11 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { getDatasets, createDataset, deleteDataset } from '@/api/dataset'
 import { uploadDatasetZip, detectDatasetStructure, confirmDatasetImport } from '@/api/upload'
 import type { DetectResult } from '@/api/upload'
-import ImportConfirmDialog from './components/ImportConfirmDialog.vue'
 import type { Dataset } from '@/types/dataset'
 
 const datasets = ref<Dataset[]>([])
 const showCreate = ref(false)
 const showUpload = ref(false)
-const showConfirm = ref(false)
 const uploading = ref(false)
 const activeDatasetId = ref('')
 const detectResult = ref<DetectResult | null>(null)
@@ -102,6 +95,15 @@ onMounted(loadDatasets)
 
 async function loadDatasets() {
   datasets.value = await getDatasets()
+}
+
+function upsertDataset(dataset: Dataset) {
+  const index = datasets.value.findIndex((item) => item.id === dataset.id)
+  if (index >= 0) {
+    datasets.value[index] = dataset
+    return
+  }
+  datasets.value.unshift(dataset)
 }
 
 async function handleCreate() {
@@ -141,22 +143,36 @@ async function doUpload() {
   try {
     await uploadDatasetZip(activeDatasetId.value, zipFile)
     const result = await detectDatasetStructure(activeDatasetId.value)
+    if (!Object.keys(result.splits || {}).length) {
+      throw new Error('未识别到可导入的数据划分，请检查压缩包结构')
+    }
+    if (!Array.isArray(result.classes) || !result.classes.length) {
+      throw new Error('未识别到类别信息，请检查 data.yaml 或标签文件')
+    }
+
     detectResult.value = result
+    await doConfirm(result)
     showUpload.value = false
-    showConfirm.value = true
+    zipFile = null
+    ElMessage.success(
+      `导入完成：train ${result.splits.train?.count || 0} / val ${result.splits.val?.count || result.splits.valid?.count || 0} / test ${result.splits.test?.count || 0}`,
+    )
+  } catch (err: unknown) {
+    const detail = isAxiosErrorDetail(err) ? err.response?.data?.detail : undefined
+    ElMessage.error(detail || (err instanceof Error ? err.message : '上传导入失败'))
   } finally {
     uploading.value = false
   }
 }
 
-async function doConfirm() {
-  if (!detectResult.value) return
-  await confirmDatasetImport(activeDatasetId.value, {
-    classes: detectResult.value.classes,
-    splits: detectResult.value.splits,
+async function doConfirm(result = detectResult.value) {
+  if (!result) return
+  const imported = await confirmDatasetImport(activeDatasetId.value, {
+    classes: result.classes,
+    splits: result.splits,
   })
-  showConfirm.value = false
-  loadDatasets()
+  upsertDataset(imported)
+  await loadDatasets()
 }
 
 function goAnnotate(datasetId: string) {

@@ -46,6 +46,29 @@ pnpm dev
 
 访问 http://localhost:5173
 
+### Docker 部署
+
+项目现在提供了基于 `docker-compose.yml` 的单机部署方案，包含：
+- `postgres`: 元数据数据库
+- `backend`: FastAPI 后端服务
+- `frontend`: Nginx 承载的前端静态站点，并反向代理 `/api` 和 WebSocket
+
+启动步骤：
+
+```bash
+cp docker.env.example .env
+docker compose --env-file .env up -d --build
+```
+
+启动后访问：
+- 前端：http://localhost:8080
+- 后端健康检查：http://localhost:8000/api/v1/health
+
+说明：
+- 运行期文件会挂载到根目录 `storage/`
+- 后端容器启动时会自动执行 `alembic upgrade head`
+- 如果你后续要接入 GPU 训练，需要在宿主机安装 NVIDIA Container Toolkit，并为 `backend` 服务补充 GPU runtime 配置
+
 ## 核心模块
 
 | 模块 | 说明 |

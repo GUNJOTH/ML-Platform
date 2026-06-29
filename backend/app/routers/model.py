@@ -1,13 +1,15 @@
 import uuid
 
-from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.deps import get_db
 from app.exceptions import NotFoundError
 from app.schemas.model import MLModelCreate, MLModelResponse, MLModelUpdate
 from app.services.model import MLModelService
+from app.utils.security import sanitize_filename
 
 router = APIRouter(prefix="/models", tags=["模型管理"])
 
@@ -47,8 +49,14 @@ async def import_model(
     file: UploadFile = File(...),
     service: MLModelService = Depends(get_service),
 ):
-    content = await file.read()
-    return await service.import_model(name, version, framework, file.filename, content)
+    max_size = settings.max_upload_size_mb * 1024 * 1024
+    if file.size is not None and file.size > max_size:
+        raise HTTPException(status_code=413, detail="File too large")
+    filename = sanitize_filename(file.filename or "model.pt", "model.pt")
+    try:
+        return await service.import_model(name, version, framework, filename, file.file)
+    except ValueError as e:
+        raise HTTPException(status_code=413, detail=str(e)) from e
 
 
 @router.get("/{model_id}", response_model=MLModelResponse, summary="查询模型详情")

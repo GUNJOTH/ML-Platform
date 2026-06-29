@@ -27,22 +27,26 @@
             <el-descriptions-item label="导出时间">{{ formatDate(context.exportCreatedAt) }}</el-descriptions-item>
             <el-descriptions-item label="dataset.yaml" :span="2">{{ context.dataYamlPath }}</el-descriptions-item>
           </el-descriptions>
+        </template>
 
-          <div class="detail-section-title">训练配置</div>
-          <el-descriptions :column="3" border size="small">
-            <el-descriptions-item label="Epochs">{{ readConfigValue('epochs') }}</el-descriptions-item>
-            <el-descriptions-item label="Batch Size">{{ readConfigValue('batch_size') }}</el-descriptions-item>
-            <el-descriptions-item label="图片尺寸">{{ readConfigValue('img_size') }}</el-descriptions-item>
-            <el-descriptions-item label="优化器">{{ readConfigValue('optimizer') }}</el-descriptions-item>
-            <el-descriptions-item label="学习率">{{ readConfigValue('lr0') }}</el-descriptions-item>
-            <el-descriptions-item label="Warmup Epochs">{{ readConfigValue('warmup_epochs') }}</el-descriptions-item>
-            <el-descriptions-item label="Patience">{{ readConfigValue('patience') }}</el-descriptions-item>
-            <el-descriptions-item label="余弦学习率">{{ formatBoolean(readConfigValue('cos_lr')) }}</el-descriptions-item>
-            <el-descriptions-item label="Close Mosaic">{{ readConfigValue('close_mosaic') }}</el-descriptions-item>
-            <el-descriptions-item label="使用预训练">{{ formatBoolean(readConfigValue('pretrained')) }}</el-descriptions-item>
-            <el-descriptions-item label="Framework">{{ readConfigValue('framework') }}</el-descriptions-item>
-          </el-descriptions>
+        <div class="detail-section-title">训练配置</div>
+        <el-descriptions :column="3" border size="small">
+          <el-descriptions-item label="Epochs">{{ readConfigValue('epochs') }}</el-descriptions-item>
+          <el-descriptions-item label="Batch Size">{{ readConfigValue('batch_size') }}</el-descriptions-item>
+          <el-descriptions-item label="图片尺寸">{{ readConfigValue('img_size') }}</el-descriptions-item>
+          <el-descriptions-item label="优化器">{{ readConfigValue('optimizer') }}</el-descriptions-item>
+          <el-descriptions-item label="学习率">{{ readConfigValue('lr0') }}</el-descriptions-item>
+          <el-descriptions-item label="Device">{{ readConfigValue('device', 'auto') }}</el-descriptions-item>
+          <el-descriptions-item label="Workers">{{ readConfigValue('workers', autoWorkersText) }}</el-descriptions-item>
+          <el-descriptions-item label="Warmup Epochs">{{ readConfigValue('warmup_epochs') }}</el-descriptions-item>
+          <el-descriptions-item label="Patience">{{ readConfigValue('patience') }}</el-descriptions-item>
+          <el-descriptions-item label="余弦学习率">{{ formatBoolean(readConfigValue('cos_lr')) }}</el-descriptions-item>
+          <el-descriptions-item label="Close Mosaic">{{ readConfigValue('close_mosaic') }}</el-descriptions-item>
+          <el-descriptions-item label="使用预训练">{{ formatBoolean(readConfigValue('pretrained')) }}</el-descriptions-item>
+          <el-descriptions-item label="Framework">{{ readConfigValue('framework') }}</el-descriptions-item>
+        </el-descriptions>
 
+        <template v-if="context">
           <div class="detail-section-title">数据摘要</div>
           <el-descriptions :column="2" border size="small">
             <el-descriptions-item label="图片总数">{{ context.imageCount || '--' }}</el-descriptions-item>
@@ -59,10 +63,14 @@
         <div class="detail-section-title">任务结果详情</div>
         <template v-if="task.status === 'completed' && task.result">
           <el-descriptions :column="4" border size="small">
+            <el-descriptions-item label="Best Epoch">{{ readResultValue('best_epoch') }}</el-descriptions-item>
             <el-descriptions-item label="mAP50">{{ fmtMetric(task.result.map50) }}</el-descriptions-item>
             <el-descriptions-item label="mAP50-95">{{ fmtMetric(task.result.map50_95) }}</el-descriptions-item>
             <el-descriptions-item label="Precision">{{ fmtMetric(task.result.precision) }}</el-descriptions-item>
             <el-descriptions-item label="Recall">{{ fmtMetric(task.result.recall) }}</el-descriptions-item>
+            <el-descriptions-item label="训练耗时">{{ formatDuration(task.result.train_duration_minutes) }}</el-descriptions-item>
+            <el-descriptions-item label="权重大小">{{ formatSize(task.result.weight_size_mb) }}</el-descriptions-item>
+            <el-descriptions-item label="模型参数量">{{ readResultValue('model_parameters') }}</el-descriptions-item>
           </el-descriptions>
         </template>
 
@@ -101,6 +109,7 @@ const emit = defineEmits<{
 
 const chartRef = ref<HTMLDivElement | null>(null)
 let chartInstance: echarts.ECharts | null = null
+const autoWorkersText = navigator.platform.toLowerCase().includes('win') ? '0' : '8'
 
 watch(
   () => [props.visible, props.history] as const,
@@ -169,12 +178,42 @@ function formatDate(value?: string | null): string {
   return new Date(value).toLocaleString()
 }
 
-function readConfigValue(key: string): string {
+function readConfigValue(key: string, fallback = '--'): string {
   const value = props.task?.config?.[key]
+  if (value === undefined || value === null || value === '') {
+    return fallback
+  }
+  return String(value)
+}
+
+function readResultValue(key: string): string {
+  const value = props.task?.result?.[key]
   if (value === undefined || value === null || value === '') {
     return '--'
   }
   return String(value)
+}
+
+function formatDuration(value: unknown): string {
+  if (value === undefined || value === null || value === '') {
+    return '--'
+  }
+  const minutes = Number(value)
+  if (!Number.isFinite(minutes) || minutes <= 0) {
+    return '--'
+  }
+  return `${minutes.toFixed(2)} min`
+}
+
+function formatSize(value: unknown): string {
+  if (value === undefined || value === null || value === '') {
+    return '--'
+  }
+  const size = Number(value)
+  if (!Number.isFinite(size) || size <= 0) {
+    return '--'
+  }
+  return `${size.toFixed(2)} MB`
 }
 
 function formatBoolean(value: string): string {

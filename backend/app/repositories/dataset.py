@@ -22,14 +22,16 @@ class ImageRepository(BaseRepository[Image]):
         super().__init__(session, Image)
 
     async def list_by_dataset(
-        self, dataset_id: uuid.UUID, offset: int = 0, limit: int = 50
+        self,
+        dataset_id: uuid.UUID,
+        offset: int = 0,
+        limit: int = 50,
+        split: str | None = None,
     ) -> list[Image]:
-        stmt = (
-            select(Image)
-            .where(Image.dataset_id == dataset_id)
-            .offset(offset)
-            .limit(limit)
-        )
+        stmt = select(Image).where(Image.dataset_id == dataset_id)
+        if split:
+            stmt = stmt.where(Image.split == split)
+        stmt = stmt.offset(offset).limit(limit)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 

@@ -1,4 +1,5 @@
 import request from './request'
+import type { Dataset } from '@/types/dataset'
 
 export interface DetectResult {
   classes: string[]
@@ -18,7 +19,9 @@ export function detectDatasetStructure(datasetId: string) {
 }
 
 export function confirmDatasetImport(datasetId: string, payload: Record<string, unknown>) {
-  return request.post(`/datasets/${datasetId}/confirm-import`, payload)
+  return request.post<never, Dataset>(`/datasets/${datasetId}/confirm-import`, payload, {
+    timeout: 300000,
+  })
 }
 
 export function uploadImage(file: File) {

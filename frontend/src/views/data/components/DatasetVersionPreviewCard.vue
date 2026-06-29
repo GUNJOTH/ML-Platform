@@ -26,6 +26,10 @@
         <span class="preview-label">划分策略</span>
         <span class="preview-value">{{ splitStrategyLabel }}</span>
       </div>
+      <div v-if="splitPlanText" class="preview-item preview-item-wide">
+        <span class="preview-label">最终落地</span>
+        <span class="preview-value">{{ splitPlanText }}</span>
+      </div>
     </div>
   </el-card>
 </template>
@@ -38,6 +42,7 @@ defineProps<{
   exportFormat: string
   includeSplitText: string
   splitStrategyLabel: string
+  splitPlanText?: string
 }>()
 </script>
 
@@ -70,5 +75,9 @@ defineProps<{
   color: #0f172a;
   font-weight: 600;
   text-align: right;
+}
+
+.preview-item-wide {
+  align-items: flex-start;
 }
 </style>

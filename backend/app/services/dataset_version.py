@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import random
 import re
 import shutil
 import uuid
@@ -14,7 +15,14 @@ import yaml
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.core.dataset_files import extract_class_names, read_yaml_payload, resolve_storage_path
+from app.core.dataset_files import (
+    build_yolo_label_file_index,
+    extract_class_names,
+    read_yaml_payload,
+    resolve_effective_split_from_image_path,
+    resolve_storage_path,
+    resolve_yolo_label_path,
+)
 from app.core.storage.factory import get_storage
 from app.core.storage.paths import StoragePaths
 from app.exceptions import NotFoundError, ValidationError
@@ -61,7 +69,12 @@ class DatasetVersionService:
         if not dataset:
             raise NotFoundError("Dataset not found")
 
-        snapshot = await self._build_snapshot(dataset, include_splits=data.include_splits)
+        snapshot = await self._build_snapshot(
+            dataset,
+            include_splits=data.include_splits,
+            split_strategy=data.split_strategy,
+            split_config=data.split_config,
+        )
         validation = self._validate_snapshot(snapshot, include_splits=data.include_splits)
         if not validation.passed:
             raise ValidationError(self._build_validation_error_message(validation))
@@ -76,7 +89,7 @@ class DatasetVersionService:
             export_format=data.export_format.lower(),
             include_splits=data.include_splits,
             split_strategy=data.split_strategy,
-            split_config=data.split_config or snapshot["split_counts"],
+            split_config=snapshot["resolved_split_config"],
             label_schema_snapshot=snapshot["labels"],
             stats_snapshot=snapshot["stats"],
             validation_summary=validation.model_dump(),
@@ -91,7 +104,15 @@ class DatasetVersionService:
         if not dataset:
             raise NotFoundError("Dataset not found")
 
-        snapshot = await self._build_snapshot(dataset, include_splits=data.include_splits)
+        try:
+            snapshot = await self._build_snapshot(
+                dataset,
+                include_splits=data.include_splits,
+                split_strategy=data.split_strategy,
+                split_config=data.split_config,
+            )
+        except ValidationError as exc:
+            return self._build_invalid_split_result(str(exc))
         return self._validate_snapshot(snapshot, include_splits=data.include_splits)
 
     async def validate_version(self, version_id: uuid.UUID) -> DatasetVersionValidationResult:
@@ -104,10 +125,23 @@ class DatasetVersionService:
             raise NotFoundError("Dataset not found")
 
         include_splits = version.include_splits or ["train", "val", "test"]
-        snapshot = await self._build_snapshot(dataset, include_splits=include_splits)
-        result = self._validate_snapshot(snapshot, include_splits=include_splits)
+        try:
+            snapshot = await self._build_snapshot(
+                dataset,
+                include_splits=include_splits,
+                split_strategy=version.split_strategy,
+                split_config=version.split_config,
+            )
+            result = self._validate_snapshot(snapshot, include_splits=include_splits)
+            version.validation_summary = result.model_dump()
+            version.status = "frozen" if result.passed else "draft"
+            version.stats_snapshot = snapshot["stats"]
+            version.split_config = snapshot["resolved_split_config"]
+        except ValidationError as exc:
+            result = self._build_invalid_split_result(str(exc))
+            version.validation_summary = result.model_dump()
+            version.status = "draft"
         version.validation_summary = result.model_dump()
-        version.status = "frozen" if result.passed else "draft"
         await self.version_repo.update(version)
         return result
 
@@ -140,7 +174,13 @@ class DatasetVersionService:
             export_name=data.export_name,
             export_format=data.export_format.lower(),
             status="pending",
-            split_config={"splits": data.splits, "extras": data.extras, "notes": data.notes},
+            split_config={
+                "splits": data.splits,
+                "extras": data.extras,
+                "notes": data.notes,
+                "version_split_strategy": version.split_strategy,
+                "version_split_config": version.split_config,
+            },
             validation_summary=validation.model_dump(),
         )
         entity = await self.export_repo.create(entity)
@@ -187,31 +227,60 @@ class DatasetVersionService:
         await self._delete_export_entity(export)
 
     async def _build_snapshot(
-        self, dataset: Dataset, include_splits: list[str] | None
+        self,
+        dataset: Dataset,
+        include_splits: list[str] | None,
+        split_strategy: str | None = None,
+        split_config: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        strategy = split_strategy or "reuse-existing"
+        source_splits = ["train", "val", "test"]
+        if strategy == "auto-ratio" and isinstance(split_config, dict):
+            configured_scope = split_config.get("scope_splits")
+            if isinstance(configured_scope, list) and configured_scope:
+                source_splits = [str(item) for item in configured_scope]
+        elif include_splits:
+            source_splits = include_splits
+
         images = await self.image_repo.list_by_dataset(dataset.id, offset=0, limit=100000)
         labels = await self.label_repo.list_by_dataset(dataset.id)
         annotations = await self.annotation_repo.list_by_dataset(dataset.id)
-        valid_splits = set(include_splits or ["train", "val", "test"])
+        valid_splits = set(source_splits)
 
         if labels and annotations:
-            return self._build_snapshot_from_database(
+            snapshot = self._build_snapshot_from_database(
                 images=images,
                 labels=labels,
                 annotations=annotations,
                 valid_splits=valid_splits,
             )
+        else:
+            yolo_snapshot = self._build_snapshot_from_yolo_files(dataset, valid_splits)
+            if yolo_snapshot is not None:
+                snapshot = yolo_snapshot
+            else:
+                snapshot = self._build_snapshot_from_database(
+                    images=images,
+                    labels=labels,
+                    annotations=annotations,
+                    valid_splits=valid_splits,
+                )
 
-        yolo_snapshot = self._build_snapshot_from_yolo_files(dataset, valid_splits)
-        if yolo_snapshot is not None:
-            return yolo_snapshot
+        if strategy == "auto-ratio":
+            return self._apply_auto_ratio_split(
+                snapshot,
+                include_splits=include_splits or ["train", "val", "test"],
+                split_config=split_config,
+            )
+        if strategy != "reuse-existing":
+            raise ValidationError(f"Unsupported split strategy: {strategy}")
 
-        return self._build_snapshot_from_database(
-            images=images,
-            labels=labels,
-            annotations=annotations,
-            valid_splits=valid_splits,
+        snapshot["resolved_split_config"] = self._build_reuse_existing_split_config(
+            include_splits=include_splits or ["train", "val", "test"],
+            split_config=split_config,
+            split_counts=snapshot["split_counts"],
         )
+        return snapshot
 
     def _build_snapshot_from_database(
         self,
@@ -232,9 +301,10 @@ class DatasetVersionService:
         label_map = {label.id: label for label in labels}
 
         for image in images:
-            if image.split not in valid_splits:
+            effective_split = self._resolve_effective_split_for_image(image)
+            if effective_split not in valid_splits:
                 continue
-            split_counter[image.split] += 1
+            split_counter[effective_split] += 1
             image_annotations = annotations_by_image.get(image.id, [])
             if image_annotations:
                 annotated_image_count += 1
@@ -290,6 +360,7 @@ class DatasetVersionService:
             if isinstance(path_root, str) and path_root
             else data_yaml_path.parent
         )
+        label_index = build_yolo_label_file_index(dataset_root)
 
         split_counter: Counter[str] = Counter()
         class_counter: Counter[str] = Counter()
@@ -309,7 +380,6 @@ class DatasetVersionService:
                 continue
 
             image_dir = self._resolve_dataset_subpath(dataset_root, split_ref)
-            label_dir = self._infer_label_dir(dataset_root, split_ref)
             if not image_dir.exists():
                 continue
 
@@ -317,9 +387,14 @@ class DatasetVersionService:
                 split_counter[split] += 1
                 stem = image_path.stem
                 yolo_image_paths_by_key[(split, stem)] = image_path
-                label_path = label_dir / f"{stem}.txt"
+                label_path = resolve_yolo_label_path(
+                    dataset_root,
+                    image_path,
+                    image_split=split,
+                    label_index=label_index,
+                )
                 lines: list[str] = []
-                if label_path.exists():
+                if label_path is not None and label_path.exists():
                     lines = [
                         line.strip()
                         for line in label_path.read_text(encoding="utf-8").splitlines()
@@ -337,7 +412,7 @@ class DatasetVersionService:
                         issues.append(
                             {
                                 "code": "INVALID_YOLO_ROW",
-                                "message": f"{label_path.name} 中存在格式错误的标注行",
+                                "message": f"{(label_path.name if label_path else f'{stem}.txt')} 中存在格式错误的标注行",
                                 "level": "error",
                             }
                         )
@@ -349,7 +424,7 @@ class DatasetVersionService:
                         issues.append(
                             {
                                 "code": "INVALID_YOLO_VALUE",
-                                "message": f"{label_path.name} 中存在非数字标注值",
+                                "message": f"{(label_path.name if label_path else f'{stem}.txt')} 中存在非数字标注值",
                                 "level": "error",
                             }
                         )
@@ -358,7 +433,7 @@ class DatasetVersionService:
                         issues.append(
                             {
                                 "code": "INVALID_CLASS_ID",
-                                "message": f"{label_path.name} 中引用的类别索引 {class_index} 超出范围",
+                                "message": f"{(label_path.name if label_path else f'{stem}.txt')} 中引用的类别索引 {class_index} 超出范围",
                                 "level": "error",
                             }
                         )
@@ -367,7 +442,7 @@ class DatasetVersionService:
                         issues.append(
                             {
                                 "code": "INVALID_YOLO_COORD",
-                                "message": f"{label_path.name} 中存在超出 0-1 范围的坐标值",
+                                "message": f"{(label_path.name if label_path else f'{stem}.txt')} 中存在超出 0-1 范围的坐标值",
                                 "level": "error",
                             }
                         )
@@ -404,6 +479,15 @@ class DatasetVersionService:
             "source_mode": "yolo_files",
             "yolo_labels_by_key": yolo_labels_by_key,
             "yolo_image_paths_by_key": yolo_image_paths_by_key,
+            "yolo_records_by_key": {
+                self._build_yolo_record_key(image_path, dataset_root): {
+                    "source_split": split,
+                    "stem": stem,
+                    "image_path": str(image_path),
+                    "label_lines": yolo_labels_by_key[(split, stem)],
+                }
+                for (split, stem), image_path in yolo_image_paths_by_key.items()
+            },
             "yolo_issues": issues,
         }
 
@@ -487,7 +571,12 @@ class DatasetVersionService:
         if not dataset:
             raise NotFoundError("Dataset not found")
 
-        snapshot = await self._build_snapshot(dataset, include_splits=data.splits)
+        snapshot = await self._build_snapshot(
+            dataset,
+            include_splits=data.splits,
+            split_strategy=version.split_strategy,
+            split_config=version.split_config,
+        )
         export_root = StoragePaths.export_root(export_entity.id)
         if export_root.exists():
             await asyncio.to_thread(shutil.rmtree, export_root, True)
@@ -499,7 +588,57 @@ class DatasetVersionService:
         labels = version.label_schema_snapshot or snapshot["labels"]
         split_counts: Counter[str] = Counter()
 
-        if snapshot.get("source_mode") == "yolo_files":
+        if version.split_strategy == "auto-ratio" and snapshot.get("split_assignments"):
+            split_assignments: dict[str, str] = snapshot["split_assignments"]
+            if snapshot.get("source_mode") == "yolo_files":
+                yolo_records_by_key: dict[str, dict[str, Any]] = snapshot.get(
+                    "yolo_records_by_key", {}
+                )
+                for key, record in yolo_records_by_key.items():
+                    assigned_split = split_assignments.get(key)
+                    if assigned_split not in data.splits:
+                        continue
+                    source_path = Path(str(record["image_path"]))
+                    if not source_path.exists():
+                        continue
+                    split_counts[assigned_split] += 1
+                    target_image = export_root / "images" / assigned_split / source_path.name
+                    await asyncio.to_thread(shutil.copy2, source_path, target_image)
+                    label_path = (
+                        export_root / "labels" / assigned_split / f"{str(record['stem'])}.txt"
+                    )
+                    label_path.write_text(
+                        "\n".join(record.get("label_lines", [])),
+                        encoding="utf-8",
+                    )
+            else:
+                label_index = {item["id"]: idx for idx, item in enumerate(labels)}
+                images = snapshot["images"]
+                annotations_by_image = snapshot["annotations_by_image"]
+                for image in images:
+                    assigned_split = split_assignments.get(str(image.id))
+                    if assigned_split not in data.splits:
+                        continue
+                    source_path = resolve_storage_path(image.file_path)
+                    if not source_path.exists():
+                        continue
+                    split_counts[assigned_split] += 1
+                    target_image = export_root / "images" / assigned_split / source_path.name
+                    await asyncio.to_thread(shutil.copy2, source_path, target_image)
+
+                    label_path = (
+                        export_root
+                        / "labels"
+                        / assigned_split
+                        / f"{Path(source_path.name).stem}.txt"
+                    )
+                    lines: list[str] = []
+                    for annotation in annotations_by_image.get(image.id, []):
+                        yolo_line = self._to_yolo_line(annotation, image, label_index)
+                        if yolo_line:
+                            lines.append(yolo_line)
+                    label_path.write_text("\n".join(lines), encoding="utf-8")
+        elif snapshot.get("source_mode") == "yolo_files":
             image_paths: dict[tuple[str, str], Path] = snapshot.get("yolo_image_paths_by_key", {})
             label_lines: dict[tuple[str, str], list[str]] = snapshot.get("yolo_labels_by_key", {})
             for (split, stem), source_path in image_paths.items():
@@ -516,18 +655,19 @@ class DatasetVersionService:
             annotations_by_image: dict[uuid.UUID, list[Annotation]] = snapshot["annotations_by_image"]
 
             for image in images:
-                if image.split not in data.splits:
+                effective_split = self._resolve_effective_split_for_image(image)
+                if effective_split not in data.splits:
                     continue
 
                 source_path = resolve_storage_path(image.file_path)
                 if not source_path.exists():
                     continue
 
-                split_counts[image.split] += 1
-                target_image = export_root / "images" / image.split / source_path.name
+                split_counts[effective_split] += 1
+                target_image = export_root / "images" / effective_split / source_path.name
                 await asyncio.to_thread(shutil.copy2, source_path, target_image)
 
-                label_path = export_root / "labels" / image.split / f"{Path(source_path.name).stem}.txt"
+                label_path = export_root / "labels" / effective_split / f"{Path(source_path.name).stem}.txt"
                 lines: list[str] = []
                 for annotation in annotations_by_image.get(image.id, []):
                     yolo_line = self._to_yolo_line(annotation, image, label_index)
@@ -573,6 +713,9 @@ class DatasetVersionService:
             encoding="utf-8",
         )
 
+        split_config = dict(export_entity.split_config or {})
+        split_config["resolved_split_counts"] = dict(split_counts)
+        export_entity.split_config = split_config
         export_entity.output_path = str(export_root)
         export_entity.data_yaml_path = str(data_yaml_path)
         export_entity.manifest_path = str(manifest_path)
@@ -611,10 +754,230 @@ class DatasetVersionService:
             return f"版本校验未通过：{result.errors[0].message}"
         return f"版本校验未通过：{result.errors[0].message}，另有 {len(result.errors) - 1} 个问题"
 
+    @classmethod
+    def _build_invalid_split_result(cls, message: str) -> DatasetVersionValidationResult:
+        issue = cls._issue("INVALID_SPLIT_CONFIG", message, "error")
+        return DatasetVersionValidationResult(
+            passed=False,
+            errors=[issue],
+            warnings=[],
+            summary={},
+        )
+
     @staticmethod
     def _slugify(value: str) -> str:
         slug = re.sub(r"[^a-zA-Z0-9]+", "_", value).strip("_").lower()
         return slug or "dataset_version"
+
+    @staticmethod
+    def _normalize_splits(splits: list[str] | None) -> list[str]:
+        ordered = ["train", "val", "test"]
+        values = {str(item) for item in (splits or [])}
+        return [item for item in ordered if item in values]
+
+    @classmethod
+    def _build_reuse_existing_split_config(
+        cls,
+        include_splits: list[str],
+        split_config: dict[str, Any] | None,
+        split_counts: dict[str, int],
+    ) -> dict[str, Any]:
+        resolved = dict(split_config or {})
+        resolved["strategy"] = "reuse-existing"
+        resolved["scope_splits"] = cls._normalize_splits(include_splits)
+        resolved["resolved_split_counts"] = dict(split_counts)
+        return resolved
+
+    def _apply_auto_ratio_split(
+        self,
+        snapshot: dict[str, Any],
+        include_splits: list[str],
+        split_config: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        target_splits = self._normalize_splits(include_splits)
+        if not target_splits:
+            raise ValidationError("自动划分至少需要选择一个目标划分")
+
+        config = dict(split_config or {})
+        assignment = config.get("assignment")
+        ratios, seed = self._resolve_auto_ratio_ratios(target_splits, config)
+
+        if snapshot.get("source_mode") == "yolo_files":
+            records_by_key: dict[str, dict[str, Any]] = snapshot.get(
+                "yolo_records_by_key", {}
+            )
+            record_keys = sorted(records_by_key.keys())
+        else:
+            record_keys = sorted(str(image.id) for image in snapshot["images"])
+
+        if not isinstance(assignment, dict) or not assignment:
+            assignment = self._generate_split_assignment(
+                record_keys,
+                target_splits,
+                ratios,
+                seed,
+            )
+        else:
+            normalized_assignment = {
+                str(key): str(value)
+                for key, value in assignment.items()
+                if str(value) in {"train", "val", "test"}
+            }
+            missing_keys = [
+                key for key in record_keys if key not in normalized_assignment
+            ]
+            if missing_keys:
+                generated_assignment = self._generate_split_assignment(
+                    record_keys, target_splits, ratios, seed
+                )
+                for key in missing_keys:
+                    normalized_assignment[key] = generated_assignment[key]
+            assignment = normalized_assignment
+
+        split_counts = Counter(
+            assignment[key]
+            for key in record_keys
+            if assignment.get(key) in target_splits
+        )
+
+        snapshot["split_assignments"] = assignment
+        snapshot["split_counts"] = dict(split_counts)
+        snapshot["stats"] = {
+            **snapshot["stats"],
+            "image_count": sum(split_counts.values()),
+            "split_counts": dict(split_counts),
+        }
+        snapshot["resolved_split_config"] = {
+            **config,
+            "strategy": "auto-ratio",
+            "scope_splits": self._normalize_splits(
+                config.get("scope_splits")
+                if isinstance(config.get("scope_splits"), list)
+                else include_splits
+            ),
+            "train_ratio": ratios.get("train", 0.0),
+            "val_ratio": ratios.get("val", 0.0),
+            "test_ratio": ratios.get("test", 0.0),
+            "random_seed": seed,
+            "resolved_split_counts": dict(split_counts),
+            "assignment": assignment,
+        }
+        return snapshot
+
+    @staticmethod
+    def _resolve_auto_ratio_ratios(
+        target_splits: list[str], split_config: dict[str, Any]
+    ) -> tuple[dict[str, float], int]:
+        if len(target_splits) == 1:
+            seed = int(
+                split_config.get("random_seed", split_config.get("seed", 42)) or 42
+            )
+            split = target_splits[0]
+            return {
+                "train": 1.0 if split == "train" else 0.0,
+                "val": 1.0 if split == "val" else 0.0,
+                "test": 1.0 if split == "test" else 0.0,
+            }, seed
+
+        defaults = {"train": 0.8, "val": 0.1, "test": 0.1}
+        raw_ratios: dict[str, float] = {"train": 0.0, "val": 0.0, "test": 0.0}
+
+        for split in ("train", "val", "test"):
+            if split not in target_splits:
+                continue
+            raw_value = split_config.get(f"{split}_ratio", defaults[split])
+            try:
+                value = float(raw_value)
+            except (TypeError, ValueError):
+                raise ValidationError(f"{split} 划分比例必须是数字")
+            if value <= 0:
+                raise ValidationError(f"{split} 划分比例必须大于 0")
+            raw_ratios[split] = value
+
+        total = sum(raw_ratios[split] for split in target_splits)
+        if total <= 0:
+            raise ValidationError("自动划分比例总和必须大于 0")
+
+        ratios = {split: raw_ratios[split] / total for split in target_splits}
+        seed = int(split_config.get("random_seed", split_config.get("seed", 42)) or 42)
+        return {
+            "train": ratios.get("train", 0.0),
+            "val": ratios.get("val", 0.0),
+            "test": ratios.get("test", 0.0),
+        }, seed
+
+    @classmethod
+    def _generate_split_assignment(
+        cls,
+        record_keys: list[str],
+        target_splits: list[str],
+        ratios: dict[str, float],
+        seed: int,
+    ) -> dict[str, str]:
+        if not record_keys:
+            return {}
+
+        counts = cls._allocate_auto_ratio_counts(
+            total=len(record_keys),
+            target_splits=target_splits,
+            ratios=ratios,
+        )
+
+        shuffled_keys = list(record_keys)
+        random.Random(seed).shuffle(shuffled_keys)
+
+        assignment: dict[str, str] = {}
+        cursor = 0
+        for split in target_splits:
+            split_count = counts.get(split, 0)
+            for key in shuffled_keys[cursor: cursor + split_count]:
+                assignment[key] = split
+            cursor += split_count
+        return assignment
+
+    @staticmethod
+    def _allocate_auto_ratio_counts(
+        total: int,
+        target_splits: list[str],
+        ratios: dict[str, float],
+    ) -> dict[str, int]:
+        if total <= 0:
+            return {split: 0 for split in target_splits}
+        if len(target_splits) == 1:
+            return {target_splits[0]: total}
+        if total < len(target_splits):
+            ordered = sorted(
+                target_splits,
+                key=lambda item: ratios.get(item, 0.0),
+                reverse=True,
+            )
+            counts = {split: 0 for split in target_splits}
+            for split in ordered[:total]:
+                counts[split] = 1
+            return counts
+
+        counts = {split: 1 for split in target_splits}
+        remaining = total - len(target_splits)
+        raw_values = {split: remaining * ratios.get(split, 0.0) for split in target_splits}
+        base_values = {split: int(raw_values[split]) for split in target_splits}
+        counts = {split: counts[split] + base_values[split] for split in target_splits}
+        allocated = sum(counts.values())
+        remainder = total - allocated
+        order = sorted(
+            target_splits,
+            key=lambda item: (raw_values[item] - base_values[item], ratios.get(item, 0.0)),
+            reverse=True,
+        )
+        for split in order[:remainder]:
+            counts[split] += 1
+        return counts
+
+    @staticmethod
+    def _build_yolo_record_key(image_path: Path, dataset_root: Path) -> str:
+        try:
+            return str(image_path.relative_to(dataset_root))
+        except ValueError:
+            return str(image_path)
 
     @classmethod
     def _resolve_dataset_subpath(cls, dataset_root: Path, path_str: str) -> Path:
@@ -623,21 +986,23 @@ class DatasetVersionService:
             return path
         return dataset_root / path
 
-    @classmethod
-    def _infer_label_dir(cls, dataset_root: Path, image_ref: str) -> Path:
-        image_path = Path(image_ref)
-        parts = list(image_path.parts)
-        if "images" in parts:
-            parts[parts.index("images")] = "labels"
-            return cls._resolve_dataset_subpath(dataset_root, str(Path(*parts)))
-        return cls._resolve_dataset_subpath(dataset_root, str(Path("labels") / image_path.name))
-
     @staticmethod
     def _iter_image_files(image_dir: Path) -> list[Path]:
         image_exts = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
         return sorted(
-            [path for path in image_dir.rglob("*") if path.is_file() and path.suffix.lower() in image_exts]
+            [
+                path
+                for path in image_dir.rglob("*")
+                if path.is_file() and path.suffix.lower() in image_exts
+            ]
         )
+
+    @classmethod
+    def _resolve_effective_split_for_image(cls, image: Image) -> str:
+        image_path = resolve_storage_path(image.file_path)
+        if image_path.exists():
+            return resolve_effective_split_from_image_path(image_path, image.split)
+        return image.split
 
     @staticmethod
     def _to_yolo_line(

@@ -33,6 +33,7 @@
 
       <el-card class="section-block">
         <template #header>数据划分</template>
+        <div class="split-summary-line">{{ version.splitSummary }}</div>
         <el-table :data="version.splitDetail || []" border stripe>
           <el-table-column prop="split" label="划分" width="120" />
           <el-table-column prop="images" label="图像数" width="140" />
@@ -144,6 +145,12 @@ function formatDate(value: string): string {
 .notes-text {
   color: #475569;
   line-height: 1.8;
+}
+
+.split-summary-line {
+  margin-bottom: 12px;
+  color: #0f172a;
+  font-weight: 600;
 }
 
 .hint-list {

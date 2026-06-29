@@ -53,6 +53,16 @@
       <div class="preview-line">输出位置：{{ form.outputPath || '--' }}</div>
     </el-card>
 
+    <SplitPlanSummaryCard
+      v-if="version"
+      title="最终训练输入确认"
+      :strategy-label="exportSplitPlan.strategyLabel"
+      :subtitle="exportSplitPlan.subtitle"
+      :items="exportSplitPlan.items"
+      :notes="exportSplitPlan.notes"
+      class="preview-card"
+    />
+
     <template #footer>
       <el-button @click="emit('update:visible', false)">取消</el-button>
       <el-button @click="emit('save-draft', snapshot)">保存草稿</el-button>
@@ -65,6 +75,7 @@
 import { computed, reactive, watch } from 'vue'
 import type { ExportDraft } from '@/types/dataset-version'
 import type { DatasetVersionSummary } from '@/types/dataset-version'
+import SplitPlanSummaryCard from './SplitPlanSummaryCard.vue'
 
 const props = defineProps<{
   visible: boolean
@@ -112,6 +123,36 @@ watch(
 )
 
 const splitPreview = computed(() => (form.splits.length ? form.splits.join(' / ') : '未选择'))
+const exportSplitPlan = computed(() => {
+  const items = (props.version?.splitDetail || [])
+    .filter((item) => form.splits.includes(item.split))
+    .map((item) => ({
+      split: item.split,
+      count: item.images,
+      help: item.split === 'train'
+        ? '导出后用于模型训练'
+        : item.split === 'val'
+          ? '导出后用于验证'
+          : '导出后用于测试',
+    }))
+
+  const fallbackItems = form.splits.map((split) => ({
+    split,
+    count: 0,
+    help: split === 'train'
+      ? '导出后用于模型训练'
+      : split === 'val'
+        ? '导出后用于验证'
+        : '导出后用于测试',
+  }))
+
+  return {
+    strategyLabel: '沿用版本冻结结果',
+    subtitle: '导出不会再次重算 train / val / test，而是把版本冻结后的划分直接写入训练输入目录。',
+    items: items.length ? items : fallbackItems,
+    notes: '确认导出后，训练任务将直接消费这次导出的 dataset.yaml 与对应 images/labels 目录。',
+  }
+})
 const extraPreview = computed(() => {
   if (!form.extras.length) {
     return '无'

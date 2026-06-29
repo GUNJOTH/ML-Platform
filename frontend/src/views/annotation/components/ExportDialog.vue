@@ -50,12 +50,10 @@ async function handleExport() {
   try {
     const annotations: Record<string, { label_id: string; bbox: Record<string, number> }[]> = {}
     for (const [imageId, boxes] of props.draftStore.entries()) {
-      if (boxes.length > 0) {
-        annotations[imageId] = boxes.map((b) => ({
-          label_id: b.labelId,
-          bbox: { x: b.x, y: b.y, width: b.width, height: b.height },
-        }))
-      }
+      annotations[imageId] = boxes.map((b) => ({
+        label_id: b.labelId,
+        bbox: { x: b.x, y: b.y, width: b.width, height: b.height },
+      }))
     }
 
     await exportAnnotated(props.datasetId, {

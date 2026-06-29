@@ -4,7 +4,15 @@ from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.dataset_files import read_image_size, resolve_storage_path
+from app.core.dataset_files import (
+    build_yolo_label_file_index,
+    extract_class_names,
+    read_yaml_payload,
+    read_image_size,
+    resolve_dataset_root_from_image_path,
+    resolve_storage_path,
+    resolve_yolo_label_path,
+)
 from app.models.dataset import Image, Label
 from app.models.annotation import Annotation
 from app.repositories.dataset import ImageRepository
@@ -79,7 +87,9 @@ class AnnotationService:
 
     def _load_from_yolo_label(self, image: Image, labels: list[Label]) -> list[Annotation]:
         label_path = self._resolve_label_path(image)
-        if not label_path.exists():
+        if label_path is None or not label_path.exists():
+            return []
+        if not self._is_label_schema_compatible(image, labels):
             return []
 
         label_lookup = {index: label for index, label in enumerate(labels)}
@@ -132,10 +142,16 @@ class AnnotationService:
         return annotations
 
     @classmethod
-    def _resolve_label_path(cls, image: Image) -> Path:
+    def _resolve_label_path(cls, image: Image) -> Path | None:
         image_path = resolve_storage_path(image.file_path)
-        dataset_root = image_path.parent.parent.parent
-        return dataset_root / "labels" / image.split / f"{Path(image.filename).stem}.txt"
+        dataset_root = resolve_dataset_root_from_image_path(image_path)
+        label_index = build_yolo_label_file_index(dataset_root)
+        return resolve_yolo_label_path(
+            dataset_root,
+            image_path,
+            image_split=image.split,
+            label_index=label_index,
+        )
 
     @classmethod
     def _resolve_image_size(cls, image: Image) -> tuple[int, int]:
@@ -147,3 +163,24 @@ class AnnotationService:
             return 0, 0
 
         return read_image_size(image_path)
+
+    @classmethod
+    def _is_label_schema_compatible(cls, image: Image, labels: list[Label]) -> bool:
+        image_path = resolve_storage_path(image.file_path)
+        dataset_root = resolve_dataset_root_from_image_path(image_path)
+        yaml_path = dataset_root / "data.yaml"
+        if not yaml_path.exists():
+            return True
+
+        try:
+            class_names = extract_class_names(read_yaml_payload(yaml_path))
+        except Exception:
+            return True
+
+        if not class_names:
+            return True
+        if len(labels) != len(class_names):
+            return False
+
+        ordered_labels = sorted(labels, key=lambda label: (label.sort_order, label.name))
+        return all(label.name == class_names[index] for index, label in enumerate(ordered_labels))

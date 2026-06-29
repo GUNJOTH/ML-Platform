@@ -1,10 +1,11 @@
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.deps import get_db
 from app.exceptions import NotFoundError
 from app.schemas.dataset import (
@@ -73,10 +74,11 @@ async def list_dataset_images(
     dataset_id: uuid.UUID,
     page: int = 1,
     page_size: int = 50,
+    split: str | None = Query(None),
     service: DatasetService = Depends(get_service),
 ):
     return await service.get_images(
-        dataset_id, offset=(page - 1) * page_size, limit=page_size
+        dataset_id, offset=(page - 1) * page_size, limit=page_size, split=split
     )
 
 
@@ -95,8 +97,13 @@ async def upload_dataset_zip(
     file: UploadFile = File(...),
     service: DatasetService = Depends(get_service),
 ) -> dict[str, Any]:
-    content = await file.read()
-    return await service.upload_dataset_zip(dataset_id, content)
+    max_size = settings.max_upload_size_mb * 1024 * 1024
+    if file.size is not None and file.size > max_size:
+        raise HTTPException(status_code=413, detail="File too large")
+    try:
+        return await service.upload_dataset_zip(dataset_id, file.file)
+    except ValueError as e:
+        raise HTTPException(status_code=413, detail=str(e)) from e
 
 
 @router.get("/{dataset_id}/detect", summary="检测数据集目录结构")

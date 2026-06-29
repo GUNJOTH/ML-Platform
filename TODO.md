@@ -11,7 +11,7 @@
 | 5 | Alembic 初始迁移 | versions/ 为空，数据库表无法创建 | 已处理 |
 | 6 | YOLOv8 框架适配 | frameworks/yolov8/ 是空壳 | 已处理 |
 | 7 | Canvas 标注实现 | useCanvas.ts 为空，无法画 BBox | 已处理 |
-| 8 | Docker 部署 | 无 docker-compose.yml | 待处理 |
+| 8 | Docker 部署 | 已补充 docker-compose.yml、前后端 Dockerfile 与 Nginx 反向代理配置 | 已处理 |
 
 ## 中等（功能不完整）
 

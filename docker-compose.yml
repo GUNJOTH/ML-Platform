@@ -1,0 +1,88 @@
+# 本地单机部署编排：
+# - postgres: 元数据数据库
+# - backend: FastAPI 后端服务
+# - frontend: Nginx 承载前端静态资源，并反向代理 /api
+services:
+  # PostgreSQL 用于保存数据集、模型、任务等平台元数据
+  postgres:
+    image: postgres:16-alpine
+    container_name: ai-platform-postgres
+    environment:
+      # 优先读取根目录 .env 中的值，未提供时回退到默认值
+      POSTGRES_DB: ${POSTGRES_DB:-ai_platform}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+    ports:
+      # 宿主机端口:容器端口，默认暴露 5432 方便本机调试
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      # 持久化数据库数据，避免容器重建后数据丢失
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      # 只有数据库可连接后，后续服务才会继续启动
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-ai_platform}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # 后端 API 服务，负责任务调度、训练配置、数据集与模型管理
+  backend:
+    build:
+      context: ./backend
+    container_name: ai-platform-backend
+    depends_on:
+      postgres:
+        # 等待 postgres 健康检查通过后再启动后端
+        condition: service_healthy
+    environment:
+      APP_NAME: ${APP_NAME:-ai-platform}
+      APP_ENV: ${APP_ENV:-production}
+      APP_HOST: 0.0.0.0
+      APP_PORT: 8000
+      # 前端默认经由 8080 访问，因此这里允许该来源跨域
+      APP_CORS_ORIGINS: ${APP_CORS_ORIGINS:-http://localhost:8080}
+      # 容器内通过服务名 postgres 访问数据库，而不是 localhost
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-ai_platform}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_POOL_SIZE: ${POSTGRES_POOL_SIZE:-10}
+      # Doris 目前保留为外部依赖配置，compose 不在本文件中启动它
+      DORIS_HOST: ${DORIS_HOST:-localhost}
+      DORIS_PORT: ${DORIS_PORT:-9030}
+      DORIS_DB: ${DORIS_DB:-ai_platform_olap}
+      DORIS_USER: ${DORIS_USER:-root}
+      DORIS_PASSWORD: ${DORIS_PASSWORD:-}
+      STORAGE_BACKEND: local
+      # 统一把运行期文件写入容器内 /data/storage，再映射到宿主机 ./storage
+      STORAGE_ROOT: /data/storage
+    ports:
+      # 保留 8000 端口，便于直接访问 Swagger/health 接口
+      - "8000:8000"
+    volumes:
+      # 训练产物、上传文件、任务状态等运行数据持久化到宿主机
+      - ./storage:/data/storage
+    healthcheck:
+      # 前端依赖该健康检查结果，确保 API 可用后再启动
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/api/v1/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  # 前端静态站点，内部由 Nginx 提供页面并代理 /api 与 WebSocket
+  frontend:
+    build:
+      context: ./frontend
+    container_name: ai-platform-frontend
+    depends_on:
+      backend:
+        # 等待后端健康后再提供前端入口，减少首次访问报错
+        condition: service_healthy
+    ports:
+      # 统一从 8080 访问整个平台
+      - "8080:80"
+
+volumes:
+  # Docker 管理的命名卷，用于持久化 PostgreSQL 数据目录
+  postgres_data:

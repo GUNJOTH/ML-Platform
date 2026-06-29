@@ -2,10 +2,16 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.core.dataset_files import resolve_storage_path
+from app.core.dataset_files import (
+    build_yolo_label_file_index,
+    resolve_dataset_root_from_image_path,
+    resolve_storage_path,
+    resolve_yolo_label_path,
+)
 from app.core.storage.factory import get_storage
 from app.exceptions import NotFoundError
 from app.models.dataset import Dataset, Image, Label
@@ -20,6 +26,7 @@ from app.services.dataset_import import DatasetImporter
 
 class DatasetService:
     def __init__(self, session: AsyncSession) -> None:
+        self.session = session
         self.repo = DatasetRepository(session)
         self.image_repo = ImageRepository(session)
         self.label_repo = LabelRepository(session)
@@ -67,10 +74,14 @@ class DatasetService:
         return True
 
     async def get_images(
-        self, dataset_id: uuid.UUID, offset: int = 0, limit: int = 50
+        self,
+        dataset_id: uuid.UUID,
+        offset: int = 0,
+        limit: int = 50,
+        split: str | None = None,
     ) -> list[Image]:
         return await self.image_repo.list_by_dataset(
-            dataset_id, offset=offset, limit=limit
+            dataset_id, offset=offset, limit=limit, split=split
         )
 
     async def get_image(self, image_id: uuid.UUID) -> Image | None:
@@ -104,8 +115,8 @@ class DatasetService:
     async def count_datasets(self) -> int:
         return await self.repo.count()
 
-    async def upload_dataset_zip(self, dataset_id: uuid.UUID, content: bytes) -> dict[str, Any]:
-        return await self.importer.upload_and_extract(str(dataset_id), content)
+    async def upload_dataset_zip(self, dataset_id: uuid.UUID, source) -> dict[str, Any]:
+        return await self.importer.upload_and_extract(str(dataset_id), source)
 
     async def detect_dataset_structure(self, dataset_id: uuid.UUID) -> dict[str, Any]:
         return self.importer.detect_structure(str(dataset_id))
@@ -120,6 +131,7 @@ class DatasetService:
         classes: list[str] = payload.get("classes", [])
         splits: dict[str, dict[str, Any]] = payload.get("splits", {})
 
+        await self._reset_import_state(dataset_id)
         await self._create_labels(dataset_id, classes)
         await self._import_split_images(dataset_id, splits)
 
@@ -133,18 +145,22 @@ class DatasetService:
         return await self.repo.update(dataset)
 
     async def _create_labels(self, dataset_id: uuid.UUID, classes: list[str]) -> None:
-        for idx, name in enumerate(classes):
-            await self.label_repo.create(
-                Label(dataset_id=dataset_id, name=name, sort_order=idx)
-            )
+        if not classes:
+            return
+
+        self.session.add_all(
+            [Label(dataset_id=dataset_id, name=name, sort_order=idx) for idx, name in enumerate(classes)]
+        )
+        await self.session.flush()
 
     async def _import_split_images(
         self, dataset_id: uuid.UUID, splits: dict[str, dict[str, Any]]
     ) -> None:
+        entities: list[Image] = []
         for split_name in splits:
             normalized = "val" if split_name == "valid" else split_name
             for img in self.importer.list_images(str(dataset_id), split_name):
-                await self.image_repo.create(
+                entities.append(
                     Image(
                         dataset_id=dataset_id,
                         filename=img["filename"],
@@ -154,6 +170,16 @@ class DatasetService:
                         height=int(img.get("height", 0) or 0),
                     )
                 )
+        if not entities:
+            return
+
+        self.session.add_all(entities)
+        await self.session.flush()
+
+    async def _reset_import_state(self, dataset_id: uuid.UUID) -> None:
+        await self.session.execute(delete(Image).where(Image.dataset_id == dataset_id))
+        await self.session.execute(delete(Label).where(Label.dataset_id == dataset_id))
+        await self.session.flush()
 
     async def _detach_related_tasks(self, dataset_id: uuid.UUID) -> None:
         version_ids = [
@@ -213,7 +239,16 @@ class DatasetService:
         image_path = resolve_storage_path(image.file_path)
         dataset_root = settings.storage_path / "datasets" / str(image.dataset_id)
         if image_path.exists():
-            candidate_root = image_path.parent.parent.parent
+            candidate_root = resolve_dataset_root_from_image_path(image_path)
             if candidate_root.exists():
                 dataset_root = candidate_root
+        label_index = build_yolo_label_file_index(dataset_root)
+        resolved = resolve_yolo_label_path(
+            dataset_root,
+            image_path,
+            image_split=image.split,
+            label_index=label_index,
+        )
+        if resolved is not None:
+            return resolved
         return dataset_root / "labels" / image.split / f"{Path(image.filename).stem}.txt"

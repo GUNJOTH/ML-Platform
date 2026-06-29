@@ -47,16 +47,13 @@ class MLModelService:
         version: str | None,
         framework: str,
         filename: str,
-        content: bytes,
+        source,
     ) -> MLModel:
         from app.config import settings
 
         ext = Path(filename).suffix.lower()
         if ext not in ALLOWED_MODEL_EXTS:
             raise ValueError(f"Unsupported model format: {ext}")
-        max_size = settings.max_upload_size_mb * 1024 * 1024
-        if len(content) > max_size:
-            raise ValueError("File too large")
 
         entity = MLModel(
             name=name,
@@ -67,13 +64,18 @@ class MLModelService:
         )
         entity = await self.repo.create(entity)
 
-        model_dir = StoragePaths.model_dir(entity.id)
-        save_path = str(model_dir / filename)
+        max_size = settings.max_upload_size_mb * 1024 * 1024
         relative_path = str(Path("models") / str(entity.id) / filename)
-        await self.storage.save(relative_path, content)
+        try:
+            full_path = await self.storage.save_stream(
+                relative_path, source, max_size=max_size
+            )
+        except Exception:
+            await self.repo.delete(entity)
+            raise
 
-        entity.weight_path = save_path
-        entity.model_size_mb = round(len(content) / (1024 * 1024), 2)
+        entity.weight_path = str(StoragePaths.model_dir(entity.id) / filename)
+        entity.model_size_mb = round(Path(full_path).stat().st_size / (1024 * 1024), 2)
         return await self.repo.update(entity)
 
     async def update_model(self, model_id: uuid.UUID, data: MLModelUpdate) -> MLModel | None:

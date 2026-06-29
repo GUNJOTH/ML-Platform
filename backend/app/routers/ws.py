@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -23,6 +24,14 @@ async def task_progress_ws(websocket: WebSocket, task_id: str) -> None:
     try:
         while True:
             if result_file.exists():
+                # Sync DB status before broadcasting to client
+                from app.db.postgres import async_session_factory
+                from app.services.task import TaskService
+
+                async with async_session_factory() as session:
+                    svc = TaskService(session)
+                    await svc.sync_result(uuid.UUID(task_id))
+
                 await websocket.send_json({
                     "type": "complete",
                     **json.loads(result_file.read_text()),

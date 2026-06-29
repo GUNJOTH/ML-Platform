@@ -151,7 +151,7 @@ class YOLOv8Evaluator(BaseEvaluator):
         per_class: list[dict[str, Any]],
     ) -> dict[str, Any]:
         names = getattr(results, "names", {}) or {}
-        seen = int(getattr(results, "seen", 0) or 0)
+        seen = self._resolve_evaluated_image_count(results, box_metrics)
         nt_per_class = self._to_list(getattr(results, "nt_per_class", None))
         target_instances = sum(int(v) for v in nt_per_class) if nt_per_class else 0
         evaluated_classes = len(per_class) or len(names)
@@ -165,6 +165,18 @@ class YOLOv8Evaluator(BaseEvaluator):
             "mean_precision": mp,
             "mean_recall": mr,
         }
+
+    def _resolve_evaluated_image_count(self, results: Any, box_metrics: Any) -> int:
+        if box_metrics is not None:
+            image_metrics = getattr(box_metrics, "image_metrics", None)
+            if isinstance(image_metrics, dict) and image_metrics:
+                return len(image_metrics)
+
+        try:
+            seen = int(getattr(results, "seen", 0) or 0)
+        except (TypeError, ValueError):
+            return 0
+        return seen if seen > 0 else 0
 
     def _extract_speed(self, speed: Any) -> dict[str, float]:
         if not isinstance(speed, dict):

@@ -4,7 +4,7 @@
       <div>
         <h3>新建数据集版本</h3>
         <p class="page-subtitle">
-          先校验当前冻结范围是否可用于训练，再正式创建版本，避免反复生成无效版本记录。
+          先校验当前冻结范围是否可用于训练，再正式创建版本，并把训练集 / 验证集 / 测试集策略一并冻结下来。
         </p>
       </div>
       <div class="header-actions">
@@ -22,7 +22,7 @@
       <el-col :span="15">
         <el-card class="section-card">
           <template #header>版本基础信息</template>
-          <el-form label-width="110px">
+          <el-form label-width="120px">
             <el-form-item label="来源数据集">
               <el-select v-model="form.datasetId" placeholder="选择来源数据集" style="width: 100%">
                 <el-option
@@ -55,28 +55,48 @@
         </el-card>
 
         <el-card class="section-card">
-          <template #header>冻结范围与划分策略</template>
-          <el-form label-width="110px">
-            <el-form-item label="数据范围">
+          <template #header>训练划分策略</template>
+          <el-form label-width="120px">
+            <el-form-item label="导出目标划分">
               <el-checkbox-group v-model="form.includeSplits">
                 <el-checkbox label="train">train</el-checkbox>
                 <el-checkbox label="val">val</el-checkbox>
                 <el-checkbox label="test">test</el-checkbox>
               </el-checkbox-group>
             </el-form-item>
+
             <el-form-item label="划分策略">
               <el-radio-group v-model="form.splitStrategy">
                 <el-radio label="reuse-existing">复用现有划分</el-radio>
-                <el-radio label="manual-ratio">按比例冻结</el-radio>
-                <el-radio label="manual-pick">人工指定</el-radio>
+                <el-radio label="auto-ratio">按比例自动划分</el-radio>
               </el-radio-group>
             </el-form-item>
-            <el-form-item label="划分说明">
-              <el-input
-                v-model="form.splitSummary"
-                placeholder="例如 train 70% / val 20% / test 10%"
-              />
-            </el-form-item>
+
+            <template v-if="form.splitStrategy === 'auto-ratio'">
+              <el-form-item label="划分样本来源">
+                <el-checkbox-group v-model="form.scopeSplits">
+                  <el-checkbox label="train">train</el-checkbox>
+                  <el-checkbox label="val">val</el-checkbox>
+                  <el-checkbox label="test">test</el-checkbox>
+                </el-checkbox-group>
+                <div class="form-hint">
+                  自动划分会先从你选择的来源范围里汇总图片，再按比例冻结到 train / val / test。
+                </div>
+              </el-form-item>
+              <el-form-item label="train 比例">
+                <el-input-number v-model="form.trainRatio" :min="0.01" :max="0.98" :step="0.01" :precision="2" />
+              </el-form-item>
+              <el-form-item label="val 比例">
+                <el-input-number v-model="form.valRatio" :min="0.01" :max="0.98" :step="0.01" :precision="2" />
+              </el-form-item>
+              <el-form-item label="test 比例">
+                <el-input-number v-model="form.testRatio" :min="0.01" :max="0.98" :step="0.01" :precision="2" />
+              </el-form-item>
+              <el-form-item label="随机种子">
+                <el-input-number v-model="form.randomSeed" :min="1" :max="999999" :step="1" />
+              </el-form-item>
+            </template>
+
             <el-form-item label="附带资源">
               <el-checkbox-group v-model="form.includeAssets">
                 <el-checkbox label="images">原图</el-checkbox>
@@ -90,7 +110,7 @@
 
         <DatasetVersionValidationIssuesCard
           title="创建前校验结果"
-          empty-text="请先点击“先校验”，确认当前版本范围是否可用。"
+          empty-text="请先点击“先校验”，确认当前版本范围和划分策略是否可用。"
           success-text="校验通过，可创建版本"
           failure-text="校验未通过，暂不能创建版本"
           :validation-result="validationResult"
@@ -105,6 +125,15 @@
           :export-format="form.exportFormat"
           :include-split-text="includeSplitText"
           :split-strategy-label="splitStrategyLabel"
+          :split-plan-text="splitPlanText"
+        />
+
+        <SplitPlanSummaryCard
+          title="划分落地确认"
+          :strategy-label="draftSplitPlan.strategyLabel"
+          :subtitle="draftSplitPlan.subtitle"
+          :items="draftSplitPlan.items"
+          :notes="draftSplitPlan.notes"
         />
 
         <el-card class="section-card">
@@ -130,10 +159,14 @@ import type { Dataset } from '@/types/dataset'
 import type { DatasetVersionValidationResult } from '@/types/dataset-version'
 import DatasetVersionPlanPanel from './components/DatasetVersionPlanPanel.vue'
 import DatasetVersionPreviewCard from './components/DatasetVersionPreviewCard.vue'
+import SplitPlanSummaryCard from './components/SplitPlanSummaryCard.vue'
 import DatasetVersionValidationIssuesCard from './components/DatasetVersionValidationIssuesCard.vue'
 import {
   buildDatasetVersionPayload,
+  buildVersionSplitPlanSummary,
   buildDatasetVersionValidationFingerprint,
+  formatAutoRatioSummary,
+  getSplitStrategyLabel,
   type DatasetVersionCreateFormState,
 } from './datasetVersionValidation'
 import {
@@ -156,7 +189,11 @@ const form = reactive<DatasetVersionCreateFormState>({
   notes: '',
   includeSplits: ['train', 'val', 'test'],
   splitStrategy: 'reuse-existing',
-  splitSummary: 'train 70% / val 20% / test 10%',
+  trainRatio: 0.8,
+  valRatio: 0.1,
+  testRatio: 0.1,
+  randomSeed: 42,
+  scopeSplits: ['train', 'val', 'test'],
   includeAssets: ['images', 'labels', 'manifest'],
 })
 
@@ -176,18 +213,41 @@ const sourceLabel = computed(() => {
   return map[form.source] || form.source
 })
 
-const includeSplitText = computed(() =>
-  form.includeSplits.length ? form.includeSplits.join(' / ') : '--',
+const includeSplitText = computed(() => {
+  if (form.splitStrategy === 'auto-ratio') {
+    return `${form.includeSplits.join(' / ') || '--'} | ${formatAutoRatioSummary(form)}`
+  }
+  return form.includeSplits.length ? form.includeSplits.join(' / ') : '--'
+})
+
+const splitStrategyLabel = computed(() => getSplitStrategyLabel(form.splitStrategy))
+
+const draftSplitPlan = computed(() =>
+  buildVersionSplitPlanSummary({
+    split_strategy: form.splitStrategy,
+    split_config:
+      form.splitStrategy === 'auto-ratio'
+        ? {
+            scope_splits: form.scopeSplits,
+            train_ratio: form.trainRatio,
+            val_ratio: form.valRatio,
+            test_ratio: form.testRatio,
+            random_seed: form.randomSeed,
+          }
+        : {
+            scope_splits: form.includeSplits,
+          },
+    stats_snapshot: {
+      split_counts: validationResult.value?.summary?.split_counts || {},
+    },
+  }),
 )
 
-const splitStrategyLabel = computed(() => {
-  const map: Record<string, string> = {
-    'reuse-existing': '复用现有划分',
-    'manual-ratio': '按比例冻结',
-    'manual-pick': '人工指定',
-  }
-  return map[form.splitStrategy] || form.splitStrategy
-})
+const splitPlanText = computed(() =>
+  draftSplitPlan.value.items
+    .map((item) => `${item.split} ${item.count}`)
+    .join(' / '),
+)
 
 const validationPassed = computed(() => {
   return (
@@ -202,6 +262,15 @@ watch(
     if (validationFingerprint.value && validationFingerprint.value !== value) {
       validationResult.value = null
       validationFingerprint.value = ''
+    }
+  },
+)
+
+watch(
+  () => form.splitStrategy,
+  (strategy) => {
+    if (strategy === 'reuse-existing') {
+      form.scopeSplits = ['train', 'val', 'test']
     }
   },
 )
@@ -221,13 +290,28 @@ function goBack() {
   router.push('/data/versions')
 }
 
-async function handleValidateDraft() {
+function validateFormBeforeRemoteCheck(): string | null {
   if (!form.datasetId || !form.versionName.trim()) {
-    ElMessage.warning('请选择数据集并填写版本名称')
-    return
+    return '请选择数据集并填写版本名称'
   }
   if (!form.includeSplits.length) {
-    ElMessage.warning('请至少选择一个数据划分')
+    return '请至少选择一个导出目标划分'
+  }
+  if (form.splitStrategy === 'auto-ratio') {
+    if (!form.scopeSplits.length) {
+      return '自动划分时，至少需要选择一个划分样本来源'
+    }
+    if (form.trainRatio <= 0 || form.valRatio <= 0 || form.testRatio <= 0) {
+      return '自动划分比例必须都大于 0'
+    }
+  }
+  return null
+}
+
+async function handleValidateDraft() {
+  const localError = validateFormBeforeRemoteCheck()
+  if (localError) {
+    ElMessage.warning(localError)
     return
   }
 
@@ -251,12 +335,13 @@ async function handleValidateDraft() {
 }
 
 async function handleCreateVersion() {
-  if (!form.datasetId || !form.versionName.trim()) {
-    ElMessage.warning('请选择数据集并填写版本名称')
+  const localError = validateFormBeforeRemoteCheck()
+  if (localError) {
+    ElMessage.warning(localError)
     return
   }
   if (!validationPassed.value) {
-    ElMessage.warning('请先完成当前表单的版本校验，并确保校验通过')
+    ElMessage.warning('请先完成当前表单的版本校验，并确认校验通过')
     return
   }
 
@@ -298,6 +383,13 @@ async function handleCreateVersion() {
 .section-card {
   margin-bottom: 20px;
   border-radius: 16px;
+}
+
+.form-hint {
+  margin-top: 8px;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.6;
 }
 
 .hint-list {
