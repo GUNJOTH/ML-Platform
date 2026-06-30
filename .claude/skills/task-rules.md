@@ -1,46 +1,29 @@
 ---
 name: task-rules
-description: 任务系统约定（状态机、Runner 接口、worker 通信）
+description: 任务系统约定，包括状态机、runner 接口和结果同步
 alwaysApply: true
 globs: "backend/**/*.py"
 ---
 
 # 任务规则
 
-## TaskStatus 枚举（强制）
+## TaskStatus
 
-定义在 `app/models/task.py` 中：
-
-```python
-import enum
-
-class TaskStatus(str, enum.Enum):
-    PENDING = "pending"
-    RUNNING = "running"
-    COMPLETED = "completed"
-    FAILED = "failed"
-    CANCELLED = "cancelled"
-```
-
-- 数据库字段使用 `SQLEnum(TaskStatus)` 而非 `String`
-- 业务代码中**禁止**出现状态字符串字面量（`"pending"` / `"running"` 等），必须引用枚举
-- Schema (Pydantic) 同步使用此枚举
+- 统一使用 `app.models.task.TaskStatus`
+- 禁止在业务代码中散落状态字符串字面量
+- 终态为：`completed` / `failed` / `cancelled`
+- 终态任务不能再流转到其他状态
 
 ## 状态机
 
-```
-PENDING → RUNNING → COMPLETED
-                  ↘ FAILED
-                  ↘ CANCELLED  (PENDING / RUNNING 均可 → CANCELLED)
-```
+- `pending -> running -> completed`
+- `pending -> running -> failed`
+- `pending -> cancelled`
+- `running -> cancelled`
 
-- 终态 (`COMPLETED` / `FAILED` / `CANCELLED`) 不可再迁移
-- `start_task` 仅当 `PENDING` 时执行
-- `cancel_task` 当 `PENDING` 或 `RUNNING` 时执行
+## TaskRunner 接口
 
-## TaskRunner 接口（强制）
-
-`app/core/runner/base.py` 中：
+`app/core/runner/base.py` 中的接口应保持一致：
 
 ```python
 class TaskRunner(ABC):
@@ -48,32 +31,31 @@ class TaskRunner(ABC):
     async def cancel(self, task_id: str) -> None: ...
     async def get_progress(self, task_id: str) -> int: ...
     async def get_result(self, task_id: str) -> dict[str, Any] | None: ...
+    async def is_running(self, task_id: str) -> bool: ...
 ```
 
-- `run` 返回 `{"pid": int}`
-- `get_progress` 返回 0-100，无 progress 文件时返回 0
-- `get_result` 在 `result.json` 不存在时返回 `None`
+- `run()` 返回值至少包含 `pid`
+- `get_progress()` 返回 0-100
+- `get_result()` 在结果不存在时返回 `None`
+- `is_running()` 用于最小存活校验，不扩展成复杂监控系统
 
-## worker 通信契约
+## Worker 通信
 
 - 主进程通过 `StoragePaths.task_config(task_id)` 写 `config.json`
-- worker 启动后第一件事：写 PID 到 `StoragePaths.task_pid(task_id)`
-- worker 通过 `StoragePaths.task_progress(task_id)` 周期性写进度
-- worker 完成时写 `result.json`，格式：
+- worker 启动后第一时间写 `pid`
+- worker 周期写 `progress.json`
+- worker 完成或失败必须写 `result.json`
+- worker 的 `stdout` / `stderr` 必须重定向到任务目录
 
-```python
-# 成功
-{"status": "completed", "weight_path": str, "metrics": dict[str, float], ...}
+## 结果同步
 
-# 失败
-{"status": "failed", "error": str, "traceback": str}
-```
+- 主进程优先读取 `result.json`
+- 仅在必要时做最小结果恢复或最小失败兜底
+- 禁止把任务同步逻辑扩展成难以维护的多阶段状态系统
+- “进程已退出但无结果文件”这类兜底逻辑必须保持简单、可解释、可回退
 
-- worker 必须捕获顶层异常并写 `result.json`，禁止异常直接结束进程不留痕迹
-- worker 进程的 stdout / stderr 重定向到 `StoragePaths.task_stdout/stderr`
+## 前端可见性
 
-## 进度推送
-
-- WebSocket `/ws/tasks/{task_id}` 由 `routers/ws.py` 提供
-- 推送频率：2 秒轮询 `progress.json` 一次
-- 看到 `result.json` 后推送一条 `{"type": "complete", ...}` 然后关闭连接
+- 训练运行中允许查看日志
+- 运行中详情默认只展示对当前排障有价值的信息
+- 日志查看能力不等于完整可观测平台，禁止顺手扩成复杂日志系统

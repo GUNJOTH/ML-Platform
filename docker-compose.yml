@@ -30,6 +30,7 @@ services:
     build:
       context: ./backend
     container_name: ai-platform-backend
+    gpus: all
     depends_on:
       postgres:
         # 等待 postgres 健康检查通过后再启动后端
@@ -55,20 +56,17 @@ services:
       DORIS_USER: ${DORIS_USER:-root}
       DORIS_PASSWORD: ${DORIS_PASSWORD:-}
       STORAGE_BACKEND: local
+      NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-all}
+      NVIDIA_DRIVER_CAPABILITIES: ${NVIDIA_DRIVER_CAPABILITIES:-compute,utility}
       # 统一把运行期文件写入容器内 /data/storage，再映射到宿主机 ./storage
       STORAGE_ROOT: /data/storage
     ports:
       # 保留 8000 端口，便于直接访问 Swagger/health 接口
       - "8000:8000"
+    shm_size: "8gb"
     volumes:
       # 训练产物、上传文件、任务状态等运行数据持久化到宿主机
       - ./storage:/data/storage
-    healthcheck:
-      # 前端依赖该健康检查结果，确保 API 可用后再启动
-      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/api/v1/health || exit 1"]
-      interval: 15s
-      timeout: 5s
-      retries: 10
 
   # 前端静态站点，内部由 Nginx 提供页面并代理 /api 与 WebSocket
   frontend:
@@ -76,9 +74,8 @@ services:
       context: ./frontend
     container_name: ai-platform-frontend
     depends_on:
-      backend:
-        # 等待后端健康后再提供前端入口，减少首次访问报错
-        condition: service_healthy
+      # 仅要求后端容器先启动，不再依赖定期健康检查
+      - backend
     ports:
       # 统一从 8080 访问整个平台
       - "8080:80"

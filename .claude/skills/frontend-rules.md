@@ -1,63 +1,47 @@
 ---
 name: frontend-rules
-description: 前端架构约定，确保可扩展性和一致性
+description: 前端结构与交互规则，确保可扩展、可维护且不过度设计
 alwaysApply: true
 globs: "frontend/**/*.{ts,vue}"
 ---
 
 # 前端规则
 
-## API 调用（强制）
+## API 调用
 
-- 所有 HTTP 调用通过 `@/api/` 下的封装函数，禁止在组件里直接 `request.get/post`
-- `@/api/` 按资源划分：`@/api/dataset.ts` / `@/api/model.ts` / `@/api/task.ts` 等
-- 每个 api 函数必须有明确的请求参数类型和返回值类型
-- 公共类型定义在 `@/types/` 下，跨 api / 组件复用
-
-```ts
-// @/api/dataset.ts
-import request from './request'
-import type { Dataset, DatasetCreate } from '@/types/dataset'
-
-export function listDatasets(page = 1, pageSize = 20): Promise<Dataset[]> {
-  return request.get('/datasets', { params: { page, page_size: pageSize } })
-}
-```
+- 所有 HTTP 调用统一通过 `@/api/` 下的封装函数
+- 禁止在页面组件中直接调用底层 `request.get/post`
+- `@/api/` 按资源拆分，例如 `task.ts`、`model.ts`、`dataset.ts`
+- 每个 API 函数都要有明确的请求参数和返回值类型
 
 ## 类型定义
 
-- 业务实体类型放 `@/types/{module}.ts`
-- 禁止在组件 `<script setup>` 中重复定义同一实体的 interface
-- API 响应错误结构统一定义在 `@/types/api.ts`
+- 业务实体类型统一放在 `@/types/`
+- 禁止在多个页面里重复定义同一实体接口
+- 页面本地临时类型只保留当前页面独有的最小结构
 
-## 状态管理
+## 页面状态
 
-- 跨页面共享的状态用 Pinia store，定义在 `@/stores/{module}.ts`
-- 单页面内部状态用 `ref` / `reactive`，不用 store
-- 用户信息、当前数据集、标注草稿等跨页状态必须用 store
+- 单页内部状态优先用 `ref` / `reactive`
+- 只有跨页面共享状态才使用 store
+- 轮询、WebSocket、定时器、对象 URL、上传临时状态必须在页面关闭或切换时清理
+- 运行中任务页面只加载当前页面真正需要的数据，禁止“先全拉再决定显不显示”
 
 ## 组件组织
 
-- `views/` 下页面级组件，文件名 PascalCase（`DatasetList.vue`）
-- `views/{module}/components/` 下放该模块专用子组件
-- `components/` 下放跨模块通用组件
-- 组件 `<template>` + `<script>` 部分超过 250 行需拆分（`<style>` 不计）
-
-## 路由
-
-- 路由定义集中在 `@/router/index.ts`
-- 路由 `meta` 字段用于权限、面包屑、菜单标题
-- 动态参数用 kebab-case：`/annotation/workspace/:datasetId`
+- `views/` 放页面组件
+- `views/{module}/components/` 放模块内子组件
+- `components/` 只放跨模块通用组件
+- 页面超过 250 行时优先拆展示块，而不是继续叠条件渲染
 
 ## 错误处理
 
-- API 调用失败统一用 `ElMessage.error`，禁止 `console.error` + 静默
-- `catch (err: unknown)` 后必须类型守卫，禁止 `as any`
-- 表单校验错误就近提示，业务错误用 `ElMessage`，致命错误用 `ElMessageBox.alert`
+- 用户可感知的失败统一用 `ElMessage` / `ElMessageBox`
+- 禁止只 `console.error` 不提示用户
+- 请求失败时优先给出业务可理解的信息，不直接暴露底层异常
 
-## 禁止事项
+## 本项目额外要求
 
-- 禁止直接 import `request.ts` 到 `views/`，必须通过 `@/api/` 中转
-- 禁止在多处定义同名 interface
-- 禁止 `as any` / `: any`
-- 禁止组件直接修改 props
+- 训练、评估、推理页面优先保证主流程稳定，不为了“完整后台能力”提前扩历史、缓存、回放
+- 运行中详情只展示当前有价值的信息，避免加载无用数据
+- 上传后即可丢弃的前端临时状态，不做持久化

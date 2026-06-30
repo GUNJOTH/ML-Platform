@@ -1,5 +1,6 @@
 import json
 import logging
+import time
 import uuid
 from csv import DictReader
 from collections.abc import Mapping
@@ -33,6 +34,7 @@ _WORKER_MODULES: dict[str, str] = {
     "training": "app.runners.train_worker",
     "evaluation": "app.runners.eval_worker",
 }
+_RESULT_SYNC_GRACE_SECONDS = 15
 
 
 class TaskService:
@@ -173,6 +175,13 @@ class TaskService:
         if not result and entity.task_type == "training":
             result = await self._recover_training_result(task_id)
         if not result:
+            if not await self.runner.is_running(str(task_id)):
+                if self._should_wait_for_result_files(task_id):
+                    return entity
+                entity.status = TaskStatus.FAILED
+                entity.error_message = "训练进程已退出，但未生成结果文件"
+                entity.finished_at = datetime.now(timezone.utc)
+                return await self.repo.update(entity)
             return entity
 
         if result.get("status") == TaskStatus.COMPLETED.value:
@@ -193,8 +202,8 @@ class TaskService:
             return False
         if entity.status not in TERMINAL_STATUSES:
             await self.runner.cancel(str(task_id))
-        await self.repo.delete(entity)
         await self._delete_task_artifacts(task_id)
+        await self.repo.delete(entity)
         return True
 
     async def _delete_task_artifacts(self, task_id: uuid.UUID) -> None:
@@ -211,6 +220,23 @@ class TaskService:
         if isinstance(history, list):
             return history
         return []
+
+    async def get_log_content(self, task_id: uuid.UUID, stream: str) -> str:
+        if stream not in {"stdout", "stderr"}:
+            return ""
+
+        log_path = (
+            StoragePaths.task_stdout(task_id)
+            if stream == "stdout"
+            else StoragePaths.task_stderr(task_id)
+        )
+        if not log_path.exists():
+            return ""
+
+        try:
+            return log_path.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            return ""
 
     async def list_artifacts(self, task_id: uuid.UUID) -> list[TaskArtifactItem]:
         entity = await self.repo.get_by_id(task_id)
@@ -358,6 +384,28 @@ class TaskService:
             return int(progress_payload.get("progress", 0))
         except (TypeError, ValueError):
             return 0
+
+    def _should_wait_for_result_files(self, task_id: uuid.UUID) -> bool:
+        now = time.time()
+        candidate_paths = [
+            StoragePaths.task_stdout(task_id),
+            StoragePaths.task_stderr(task_id),
+            StoragePaths.task_progress(task_id),
+            StoragePaths.task_run_dir(task_id, "train") / "results.csv",
+            StoragePaths.task_run_dir(task_id, "train") / "weights" / "best.pt",
+        ]
+
+        for path in candidate_paths:
+            try:
+                if not path.exists():
+                    continue
+                modified_seconds = now - path.stat().st_mtime
+                if modified_seconds <= _RESULT_SYNC_GRACE_SECONDS:
+                    return True
+            except OSError:
+                continue
+
+        return False
 
     async def _load_task_json(
         self,

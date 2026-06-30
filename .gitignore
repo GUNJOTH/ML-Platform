@@ -41,3 +41,6 @@ htmlcov/
 
 # Logs
 *.log
+
+# Deployment packages
+ai-platform-deploy-*.zip

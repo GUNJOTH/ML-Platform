@@ -6,36 +6,51 @@ alwaysApply: true
 
 # 提交规范
 
-## Conventional Commits
+## 原则
 
-格式：`<type>(<scope>): <description>`
+- 一次提交只做一类紧密相关的修改
+- 标题优先使用中文，简洁明确
+- 正文说明“改了什么、为什么改、是否有风险”
+- 不提交运行期文件、打包产物、日志、`.env`
 
-### type
+## 推荐格式
 
-- feat: 新功能
-- fix: 修复
-- refactor: 重构（不改变功能）
-- docs: 文档
-- style: 格式调整（不改变逻辑）
-- test: 测试
-- chore: 构建/工具/依赖
+标题：
 
-### scope
-
-- backend, frontend, db, config, ci
-
-### 示例
-
-```
-feat(backend): add dataset CRUD endpoints
-fix(frontend): correct sidebar menu highlight
-refactor(backend): extract base repository
+```text
+类型(范围)：简要说明
 ```
 
-## 规则
+常用类型：
 
-- 描述用英文，简洁明了
-- 一次提交只做一件事
-- 每条 commit 应能独立通过基本检查（启动 + 主流程不崩）
-- 函数 / 类 / Vue 组件超过建议行数时，在 commit message 正文（非标题）说明原因
-- 不提交 `.env` 文件和 `storage/` 下的运行数据
+- `feat`
+- `fix`
+- `refactor`
+- `docs`
+- `style`
+- `test`
+- `chore`
+
+常用范围：
+
+- `backend`
+- `frontend`
+- `task`
+- `inference`
+- `training`
+- `deploy`
+- `docs`
+
+## 中文示例
+
+```text
+fix(task)：修正运行中任务详情只显示训练日志
+fix(inference)：推理完成后自动清理临时上传图片
+chore(deploy)：补充项目一键打包脚本
+```
+
+## 额外要求
+
+- 如果本次改动偏“减复杂度”，正文里写清删掉了什么复杂度
+- 如果修改了部署配置，正文里写清重建命令和影响范围
+- 如果某个函数/组件超出长度建议，正文里说明原因

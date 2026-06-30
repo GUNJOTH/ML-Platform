@@ -74,3 +74,31 @@ class ProcessRunner(TaskRunner):
             return json.loads(result_file.read_text())
         except (json.JSONDecodeError, ValueError):
             return None
+
+    async def is_running(self, task_id: str) -> bool:
+        pid_file = StoragePaths.task_pid(task_id)
+        if not pid_file.exists():
+            return False
+
+        try:
+            pid = int(pid_file.read_text().strip())
+        except (ValueError, OSError):
+            return False
+
+        if pid <= 0:
+            return False
+
+        try:
+            if sys.platform == "win32":
+                result = subprocess.run(
+                    ["tasklist", "/FI", f"PID eq {pid}"],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                return str(pid) in result.stdout
+
+            os.kill(pid, 0)
+            return True
+        except OSError:
+            return False

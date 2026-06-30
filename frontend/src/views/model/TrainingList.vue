@@ -43,7 +43,7 @@
             导出
           </el-button>
           <el-button
-            v-if="row.status === 'completed' || row.status === 'failed'"
+            v-if="row.status === 'running' || row.status === 'completed' || row.status === 'failed'"
             size="small"
             type="primary"
             link
@@ -218,6 +218,10 @@ async function handleDetail(task: Task) {
   selectedHistory.value = []
   selectedContext.value = null
   detailVisible.value = true
+
+  if (task.status === 'running') {
+    return
+  }
 
   try {
     const [history, artifacts, context] = await Promise.all([

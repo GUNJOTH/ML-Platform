@@ -53,6 +53,14 @@ pnpm dev
 - `backend`: FastAPI 后端服务
 - `frontend`: Nginx 承载的前端静态站点，并反向代理 `/api` 和 WebSocket
 
+如果需要先打包项目代码再上传到服务器，可以在项目根目录执行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\package-deploy.ps1
+```
+
+执行后会在项目根目录生成形如 `ai-platform-deploy-YYYYMMDD.zip` 的部署包，并自动清理旧的同名前缀部署包。
+
 启动步骤：
 
 ```bash

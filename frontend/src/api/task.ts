@@ -1,6 +1,6 @@
 import request from './request'
 import type { Task } from '@/types/task'
-import type { TaskArtifactItem, TaskHistoryPoint } from '@/types/task'
+import type { TaskArtifactItem, TaskHistoryPoint, TaskLog } from '@/types/task'
 
 export function getTasks(params?: { page?: number; page_size?: number; task_type?: string }) {
   return request.get<never, Task[]>('/tasks', { params })
@@ -52,4 +52,8 @@ export function getTaskProgress(id: string) {
 
 export function getTaskArtifacts(id: string) {
   return request.get<never, { items: TaskArtifactItem[] }>(`/tasks/${id}/artifacts`)
+}
+
+export function getTaskLog(id: string, stream: 'stdout' | 'stderr') {
+  return request.get<never, TaskLog>(`/tasks/${id}/logs/${stream}`)
 }

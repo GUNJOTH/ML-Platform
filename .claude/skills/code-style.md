@@ -1,36 +1,51 @@
 ---
 name: code-style
-description: 代码风格与格式规范，写入代码前必读
+description: 代码风格与复杂度控制规范，写代码前必读
 alwaysApply: true
-globs: "**/*.py,**/*.ts,**/*.vue"
+globs: "**/*.py,**/*.ts,**/*.vue,**/*.js,**/*.mjs,**/*.cjs"
 ---
 
 # 代码风格规范
 
+## 目标
+
+- 优先保证现有功能稳定，再做整理
+- 优先选择简单、可读、可维护的实现
+- 禁止为了“看起来更完整”引入额外层级、额外状态、额外流程
+
 ## Python
 
-- 函数体建议不超过 50 行；超出需在 commit message 说明原因（如外部库回调链不便拆分）
-- 类建议不超过 200 行；超出需在 commit message 说明原因
+- 函数建议不超过 50 行；超过时优先拆辅助函数，而不是继续堆条件分支
+- 类建议不超过 200 行；超过时优先拆职责
 - 所有函数参数和返回值必须有类型注解
-- 禁止使用 `print`，使用 `logging` 模块
-- 命名：snake_case（变量/函数/模块），PascalCase（类）
-- 业务异常用 `app.exceptions.*`，必须在 module 顶部 import，禁止函数内重复 import
-- 一个模块导出一组紧密相关的类或函数（如 dataset.py 同时导出 Dataset/Image/Label 是允许的）
+- 禁止使用 `print`，统一使用 `logging`
+- 命名使用 `snake_case`；类名使用 `PascalCase`
+- 业务异常统一使用 `app.exceptions.*`
+- 模块顶层完成 import，禁止在函数内重复 import 业务依赖
+- 能复用现有 helper / service / storage / registry 时，不重复实现同类逻辑
 
 ## TypeScript / Vue
 
-- 禁止使用 `any` 类型，必须明确类型
-- 禁止 `as any` 作为类型守卫的替代品；处理 `unknown` 用类型守卫或可选链
-- Vue 组件 `<template>` + `<script>` 部分建议不超过 250 行（`<style>` 不计入）；超出需拆分子组件
-- Props 必须定义类型接口
-- 命名：camelCase（变量/函数），PascalCase（类/组件/接口/类型）
-- 使用 Composition API + `<script setup lang="ts">` 语法糖
-- `catch (err: unknown)` 后必须用类型守卫缩窄类型，禁止直接断言
+- 禁止使用 `any`
+- 禁止使用 `as any`
+- `catch (err: unknown)` 后必须做类型收窄
+- 变量/函数使用 `camelCase`
+- 组件/类型/接口使用 `PascalCase`
+- Vue 统一使用 Composition API + `<script setup lang="ts">`
+- 组件的 `<template> + <script>` 建议不超过 250 行；超过时优先拆子组件
+- 组件只保留当前页面真正会展示、会交互、会复用的状态
 
 ## 通用
 
-- 注释只写 WHY（为什么这样做），不写 WHAT（代码做了什么）
-- 不写无意义的注释，如 `// 获取用户` 在 `getUser()` 上面
-- 一个文件只做一件事（单一职责）
-- 优先复用已有代码，禁止重复实现相同逻辑
-- 不引入不必要的依赖
+- 注释只解释“为什么这样做”，不解释显而易见的代码行为
+- 一个文件只做一类紧密相关的事
+- 优先删除重复逻辑，而不是在重复逻辑外再包一层抽象
+- 临时兜底逻辑必须足够小，并能说明触发条件
+- 与部署、上传、训练、推理有关的临时文件，必须明确生命周期
+- 打包产物、运行日志、运行目录不进入 Git
+
+## 本项目额外要求
+
+- 修改前先判断是否属于“扩功能”还是“减复杂度”
+- 如果用户要求“不要越改越多”，默认只做最小改动
+- 新增规则优先落到 `.claude/skills/`，不要只靠口头约定

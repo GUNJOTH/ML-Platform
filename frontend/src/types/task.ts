@@ -30,6 +30,11 @@ export interface TaskHistoryPoint {
   map50_95?: number
 }
 
+export interface TaskLog {
+  stream: string
+  content: string
+}
+
 export interface TrainingDetailContext {
   datasetName: string
   modelName: string

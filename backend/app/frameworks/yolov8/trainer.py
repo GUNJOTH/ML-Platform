@@ -72,7 +72,10 @@ class YOLOv8Trainer(BaseTrainer):
                     else []
                 )
                 history.append(epoch_data)
-                history_path.write_text(json.dumps(history))
+                history_path.write_text(
+                    json.dumps(history, ensure_ascii=False, indent=2),
+                    encoding="utf-8",
+                )
 
         model.add_callback("on_train_epoch_end", _on_train_epoch_end)
 

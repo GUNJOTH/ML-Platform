@@ -1,0 +1,42 @@
+支持的数据集 ZIP 结构示例（推荐）
+
+请将下面这类目录结构整体压缩为一个 .zip 文件后上传：
+
+helmet_dataset.zip
+└── data.yaml
+└── images
+    ├── train
+    │   ├── 0001.jpg
+    │   └── 0002.jpg
+    ├── val
+    │   ├── 0101.jpg
+    │   └── 0102.jpg
+    └── test
+        └── 0201.jpg
+└── labels
+    ├── train
+    │   ├── 0001.txt
+    │   └── 0002.txt
+    ├── val
+    │   ├── 0101.txt
+    │   └── 0102.txt
+    └── test
+        └── 0201.txt
+
+data.yaml 示例：
+
+train: images/train
+val: images/val
+test: images/test
+nc: 2
+names:
+  0: helmet
+  1: person
+
+说明：
+1. 推荐使用 YOLO 格式。
+2. 平台会优先识别 data.yaml。
+3. 验证集目录可使用 val，也可使用 valid。
+4. 图片与标签文件名需要一一对应，例如 0001.jpg 对应 0001.txt。
+5. 标签文件内容需符合 YOLO 标注格式：
+   class x_center y_center width height

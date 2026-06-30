@@ -50,6 +50,21 @@
     </el-dialog>
 
     <el-dialog v-model="showUpload" title="上传数据集 ZIP" width="400px">
+      <el-alert type="info" :closable="false" show-icon class="upload-tip">
+        <template #default>
+          <div class="upload-tip-content">
+            <span>推荐上传 YOLO 目录结构的 ZIP，支持 `data.yaml + images/labels` 组织方式。</span>
+            <a
+              href="/examples/dataset-zip-structure-example.txt"
+              download="dataset-zip-structure-example.txt"
+              target="_blank"
+              rel="noopener"
+            >
+              下载支持格式示例
+            </a>
+          </div>
+        </template>
+      </el-alert>
       <el-upload
         drag
         :auto-upload="false"
@@ -206,5 +221,24 @@ function statusLabel(status: string) { return STATUS_CONFIG[status]?.label || st
   justify-content: space-between;
   align-items: center;
   margin-bottom: 16px;
+}
+
+.upload-tip {
+  margin-bottom: 12px;
+}
+
+.upload-tip-content {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.upload-tip-content a {
+  color: #2563eb;
+  text-decoration: none;
+}
+
+.upload-tip-content a:hover {
+  text-decoration: underline;
 }
 </style>

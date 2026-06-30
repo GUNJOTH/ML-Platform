@@ -1,52 +1,48 @@
 ---
 name: storage-rules
-description: 文件存储约定，所有 storage/ 下读写必须遵守
+description: storage 目录与文件生命周期规则，所有读写必须遵守
 alwaysApply: true
 globs: "backend/**/*.py"
 ---
 
 # 存储规则
 
-## 目录结构（强制）
+## 目录结构
 
-```
+```text
 storage/
-├── datasets/{dataset_id}/
-│   ├── images/{train|val|test}/{filename}
-│   ├── labels/{train|val|test}/{filename}.txt   # YOLO txt 格式
-│   └── data.yaml                                 # 平台标准化的 yaml
-├── tasks/{task_id}/
-│   ├── config.json    # 主进程写，worker 读
-│   ├── progress.json  # worker 写，主进程读
-│   ├── result.json    # worker 写最终结果或错误
-│   ├── pid            # worker 写 PID
-│   ├── stdout.log     # subprocess stdout 重定向
-│   └── stderr.log     # subprocess stderr 重定向
-├── runs/{task_id}/    # 训练框架（如 ultralytics）的运行产物根目录
-├── models/{model_id}/ # 模型权重存储
-└── uploads/           # 上传后的临时文件，处理完必须清理
+├─ datasets/{dataset_id}/
+├─ exports/{export_id}/
+├─ tasks/{task_id}/
+├─ runs/{task_id}/
+├─ models/{model_id}/
+└─ uploads/
+   ├─ datasets/
+   ├─ models/
+   └─ images/
 ```
 
-## 路径生成（强制）
+## 路径生成
 
-- 所有上述路径**必须**通过 `app/core/storage/paths.py` 中的 `StoragePaths` helper 生成
-- 禁止在业务代码中字符串拼接 `storage_path / "datasets" / str(id)` 这种写法
-- `StoragePaths` 提供方法：`dataset_root(id)` / `dataset_images_dir(id, split)` / `dataset_labels_dir(id, split)` / `dataset_yaml(id)` / `task_root(id)` / `task_config(id)` / `task_progress(id)` / `task_result(id)` / `task_pid(id)` / `task_stdout(id)` / `task_stderr(id)` / `run_root(id)` / `model_dir(id)` / `upload_path(filename)`
+- 所有 `storage/` 路径统一通过 `app/core/storage/paths.py` 中的 `StoragePaths` 生成
+- 禁止在业务代码里手写 `settings.storage_path / "xxx"` 这种分散拼接
+- 外部库必须接收真实文件路径时，先通过 helper 解析，再传给外部库
 
 ## StorageBackend 使用
 
-- 主进程读写 `storage/` 下文件**必须**通过 `StorageBackend`（异步接口）
-- 与外部库交互的临时路径（YOLO 的 `data.yaml` 给 ultralytics 当输入、runs/ 由 ultralytics 自己写）允许直用 `Path`
-- 上传的 zip 临时文件进 `uploads/`，处理完**必须**调 `StorageBackend.delete()` 清理
+- 主进程中的业务文件读写优先通过 `StorageBackend`
+- worker 进程允许直接用 `Path` 同步写任务状态文件
+- 删除文件/目录时优先走 `StorageBackend.delete()` / `delete_dir()`
 
-## worker 进程例外
+## 文件生命周期
 
-- `app/runners/` 下的 worker 是独立 Python 进程，没有 async event loop 上下文
-- worker 内**允许**用 `Path.write_text` / `Path.read_text` / `json.dump` 同步操作 task 目录
-- worker 仍然必须通过 `StoragePaths` 获取路径，禁止字面量路径拼接
+- `tasks/` 和 `runs/` 随任务生命周期存在；删除任务时应一并删除
+- 上传后仍需复用的文件可以保留
+- 上传后只为一次处理服务的临时文件，处理完成后必须清理
+- 推理上传图片属于一次性临时文件，推理完成后应删除
 
 ## 禁止事项
 
-- 禁止 `os.remove` / `os.mkdir` / `shutil.copy` 等同步文件操作出现在主进程业务代码中
-- 禁止在 Service 层 `Path.write_bytes` / `Path.write_text`
-- 禁止访问其他用户的 `storage/` 数据（多租户预留）
+- 禁止在主进程 Service 中随意直接 `Path.write_text()` / `Path.write_bytes()`
+- 禁止留下没有数据库记录、也没有业务入口的孤儿运行目录
+- 禁止把运行期文件长期混放在源码目录

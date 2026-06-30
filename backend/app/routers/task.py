@@ -8,7 +8,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.deps import get_db
 from app.exceptions import NotFoundError
 from app.schemas.model import MLModelResponse
-from app.schemas.task import TaskArtifactsResponse, TaskCreate, TaskResponse
+from app.schemas.task import (
+    TaskArtifactsResponse,
+    TaskCreate,
+    TaskLogResponse,
+    TaskResponse,
+)
 from app.services.task import TaskService
 
 router = APIRouter(prefix="/tasks", tags=["任务管理"])
@@ -25,7 +30,11 @@ async def list_tasks(
     task_type: str | None = None,
     service: TaskService = Depends(get_service),
 ):
-    return await service.list_tasks(offset=(page - 1) * page_size, limit=page_size, task_type=task_type)
+    return await service.list_tasks(
+        offset=(page - 1) * page_size,
+        limit=page_size,
+        task_type=task_type,
+    )
 
 
 @router.post("", response_model=TaskResponse, status_code=201, summary="创建任务")
@@ -92,6 +101,16 @@ async def get_task_history(
     task_id: uuid.UUID, service: TaskService = Depends(get_service)
 ) -> list[dict[str, Any]]:
     return await service.get_history(task_id)
+
+
+@router.get("/{task_id}/logs/{stream}", response_model=TaskLogResponse, summary="查询任务日志")
+async def get_task_log(
+    task_id: uuid.UUID,
+    stream: str,
+    service: TaskService = Depends(get_service),
+):
+    content = await service.get_log_content(task_id, stream)
+    return TaskLogResponse(stream=stream, content=content)
 
 
 @router.get("/{task_id}/artifacts", response_model=TaskArtifactsResponse, summary="查询任务产物列表")

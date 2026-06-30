@@ -46,3 +46,8 @@ class TaskArtifactItem(BaseModel):
 
 class TaskArtifactsResponse(BaseModel):
     items: list[TaskArtifactItem]
+
+
+class TaskLogResponse(BaseModel):
+    stream: str
+    content: str

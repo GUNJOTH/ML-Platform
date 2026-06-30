@@ -113,7 +113,12 @@
             </el-select>
           </el-form-item>
           <el-form-item label="Workers">
-            <el-input-number v-model="form.workers" :min="0" :max="16" />
+            <div class="field-with-hint">
+              <el-input-number v-model="form.workers" :min="0" :max="16" />
+              <div class="field-hint">
+                留空时自动取默认值：Windows 为 0，Linux 为 8。服务器资源紧张时建议设为 0 或 2。
+              </div>
+            </div>
           </el-form-item>
           <el-form-item label="余弦学习率">
             <el-switch v-model="form.cos_lr" />
@@ -326,3 +331,16 @@ async function handleSubmit() {
   }
 }
 </script>
+
+<style scoped>
+.field-with-hint {
+  width: 100%;
+}
+
+.field-hint {
+  margin-top: 6px;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.5;
+}
+</style>

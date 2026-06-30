@@ -1,88 +1,107 @@
 <template>
-  <el-dialog :model-value="visible" title="训练详情" width="880px" @close="emit('update:visible', false)">
+  <el-dialog
+    :model-value="visible"
+    title="训练详情"
+    width="880px"
+    @close="emit('update:visible', false)"
+  >
     <template v-if="task">
       <el-card class="detail-card" shadow="never">
-        <el-descriptions :column="2" border size="small">
-          <el-descriptions-item label="任务名称" :span="2">{{ task.name }}</el-descriptions-item>
-          <el-descriptions-item label="状态">
-            <el-tag :type="resolveTaskStatusTag(task.status)">{{ task.status }}</el-tag>
-          </el-descriptions-item>
-          <el-descriptions-item label="进度">{{ task.progress }}%</el-descriptions-item>
-          <el-descriptions-item label="任务类型">{{ task.task_type }}</el-descriptions-item>
-          <el-descriptions-item label="创建时间">{{ formatDate(task.created_at) }}</el-descriptions-item>
-          <el-descriptions-item label="开始时间">{{ formatDate(task.started_at) }}</el-descriptions-item>
-          <el-descriptions-item label="完成时间">{{ formatDate(task.finished_at) }}</el-descriptions-item>
-        </el-descriptions>
-
-        <template v-if="context">
-          <div class="detail-section-title">训练输入</div>
+        <template v-if="task.status !== 'running'">
           <el-descriptions :column="2" border size="small">
-            <el-descriptions-item label="数据集">{{ context.datasetName }}</el-descriptions-item>
-            <el-descriptions-item label="预训练模型">
-              {{ context.modelName }}<span v-if="context.modelVersion !== '--'"> ({{ context.modelVersion }})</span>
+            <el-descriptions-item label="任务名称" :span="2">{{ task.name }}</el-descriptions-item>
+            <el-descriptions-item label="状态">
+              <el-tag :type="resolveTaskStatusTag(task.status)">{{ task.status }}</el-tag>
             </el-descriptions-item>
-            <el-descriptions-item label="数据集版本">{{ context.versionName }}</el-descriptions-item>
-            <el-descriptions-item label="导出记录">{{ context.exportName }}</el-descriptions-item>
-            <el-descriptions-item label="导出格式">{{ context.exportFormat }}</el-descriptions-item>
-            <el-descriptions-item label="导出时间">{{ formatDate(context.exportCreatedAt) }}</el-descriptions-item>
-            <el-descriptions-item label="dataset.yaml" :span="2">{{ context.dataYamlPath }}</el-descriptions-item>
+            <el-descriptions-item label="进度">{{ task.progress }}%</el-descriptions-item>
+            <el-descriptions-item label="任务类型">{{ task.task_type }}</el-descriptions-item>
+            <el-descriptions-item label="创建时间">{{ formatDate(task.created_at) }}</el-descriptions-item>
+            <el-descriptions-item label="开始时间">{{ formatDate(task.started_at) }}</el-descriptions-item>
+            <el-descriptions-item label="完成时间">{{ formatDate(task.finished_at) }}</el-descriptions-item>
           </el-descriptions>
-        </template>
 
-        <div class="detail-section-title">训练配置</div>
-        <el-descriptions :column="3" border size="small">
-          <el-descriptions-item label="Epochs">{{ readConfigValue('epochs') }}</el-descriptions-item>
-          <el-descriptions-item label="Batch Size">{{ readConfigValue('batch_size') }}</el-descriptions-item>
-          <el-descriptions-item label="图片尺寸">{{ readConfigValue('img_size') }}</el-descriptions-item>
-          <el-descriptions-item label="优化器">{{ readConfigValue('optimizer') }}</el-descriptions-item>
-          <el-descriptions-item label="学习率">{{ readConfigValue('lr0') }}</el-descriptions-item>
-          <el-descriptions-item label="Device">{{ readConfigValue('device', 'auto') }}</el-descriptions-item>
-          <el-descriptions-item label="Workers">{{ readConfigValue('workers', autoWorkersText) }}</el-descriptions-item>
-          <el-descriptions-item label="Warmup Epochs">{{ readConfigValue('warmup_epochs') }}</el-descriptions-item>
-          <el-descriptions-item label="Patience">{{ readConfigValue('patience') }}</el-descriptions-item>
-          <el-descriptions-item label="余弦学习率">{{ formatBoolean(readConfigValue('cos_lr')) }}</el-descriptions-item>
-          <el-descriptions-item label="Close Mosaic">{{ readConfigValue('close_mosaic') }}</el-descriptions-item>
-          <el-descriptions-item label="使用预训练">{{ formatBoolean(readConfigValue('pretrained')) }}</el-descriptions-item>
-          <el-descriptions-item label="Framework">{{ readConfigValue('framework') }}</el-descriptions-item>
-        </el-descriptions>
+          <template v-if="context">
+            <div class="detail-section-title">训练输入</div>
+            <el-descriptions :column="2" border size="small">
+              <el-descriptions-item label="数据集">{{ context.datasetName }}</el-descriptions-item>
+              <el-descriptions-item label="预训练模型">
+                {{ context.modelName }}
+                <span v-if="context.modelVersion !== '--'"> ({{ context.modelVersion }})</span>
+              </el-descriptions-item>
+              <el-descriptions-item label="数据集版本">{{ context.versionName }}</el-descriptions-item>
+              <el-descriptions-item label="导出记录">{{ context.exportName }}</el-descriptions-item>
+              <el-descriptions-item label="导出格式">{{ context.exportFormat }}</el-descriptions-item>
+              <el-descriptions-item label="导出时间">{{ formatDate(context.exportCreatedAt) }}</el-descriptions-item>
+              <el-descriptions-item label="dataset.yaml" :span="2">{{ context.dataYamlPath }}</el-descriptions-item>
+            </el-descriptions>
+          </template>
 
-        <template v-if="context">
-          <div class="detail-section-title">数据摘要</div>
-          <el-descriptions :column="2" border size="small">
-            <el-descriptions-item label="图片总数">{{ context.imageCount || '--' }}</el-descriptions-item>
-            <el-descriptions-item label="标注框总数">{{ context.boxCount || '--' }}</el-descriptions-item>
-            <el-descriptions-item label="类别数">{{ context.classCount || '--' }}</el-descriptions-item>
-            <el-descriptions-item label="划分统计">{{ context.splitSummary }}</el-descriptions-item>
-            <el-descriptions-item label="类别名称" :span="2">
-              {{ context.classNames.length ? context.classNames.join(' / ') : '--' }}
+          <div class="detail-section-title">训练配置</div>
+          <el-descriptions :column="3" border size="small">
+            <el-descriptions-item label="Epochs">{{ readConfigValue('epochs') }}</el-descriptions-item>
+            <el-descriptions-item label="Batch Size">{{ readConfigValue('batch_size') }}</el-descriptions-item>
+            <el-descriptions-item label="图片尺寸">{{ readConfigValue('img_size') }}</el-descriptions-item>
+            <el-descriptions-item label="优化器">{{ readConfigValue('optimizer') }}</el-descriptions-item>
+            <el-descriptions-item label="学习率">{{ readConfigValue('lr0') }}</el-descriptions-item>
+            <el-descriptions-item label="Device">{{ readConfigValue('device', 'auto') }}</el-descriptions-item>
+            <el-descriptions-item label="Workers">
+              {{ readConfigValue('workers', autoWorkersText) }}
             </el-descriptions-item>
-            <el-descriptions-item label="导出备注" :span="2">{{ context.exportNotes }}</el-descriptions-item>
+            <el-descriptions-item label="Warmup Epochs">{{ readConfigValue('warmup_epochs') }}</el-descriptions-item>
+            <el-descriptions-item label="Patience">{{ readConfigValue('patience') }}</el-descriptions-item>
+            <el-descriptions-item label="余弦学习率">{{ formatBoolean(readConfigValue('cos_lr')) }}</el-descriptions-item>
+            <el-descriptions-item label="Close Mosaic">{{ readConfigValue('close_mosaic') }}</el-descriptions-item>
+            <el-descriptions-item label="使用预训练">{{ formatBoolean(readConfigValue('pretrained')) }}</el-descriptions-item>
+            <el-descriptions-item label="Framework">{{ readConfigValue('framework') }}</el-descriptions-item>
           </el-descriptions>
+
+          <template v-if="context">
+            <div class="detail-section-title">数据摘要</div>
+            <el-descriptions :column="2" border size="small">
+              <el-descriptions-item label="图片总数">{{ context.imageCount || '--' }}</el-descriptions-item>
+              <el-descriptions-item label="标注框总数">{{ context.boxCount || '--' }}</el-descriptions-item>
+              <el-descriptions-item label="类别数">{{ context.classCount || '--' }}</el-descriptions-item>
+              <el-descriptions-item label="划分统计">{{ context.splitSummary }}</el-descriptions-item>
+              <el-descriptions-item label="类别名称" :span="2">
+                {{ context.classNames.length ? context.classNames.join(' / ') : '--' }}
+              </el-descriptions-item>
+              <el-descriptions-item label="导出备注" :span="2">{{ context.exportNotes }}</el-descriptions-item>
+            </el-descriptions>
+          </template>
+
+          <div class="detail-section-title">任务结果详情</div>
+          <template v-if="task.status === 'completed' && task.result">
+            <el-descriptions :column="4" border size="small">
+              <el-descriptions-item label="Best Epoch">{{ readResultValue('best_epoch') }}</el-descriptions-item>
+              <el-descriptions-item label="mAP50">{{ fmtMetric(task.result.map50) }}</el-descriptions-item>
+              <el-descriptions-item label="mAP50-95">{{ fmtMetric(task.result.map50_95) }}</el-descriptions-item>
+              <el-descriptions-item label="Precision">{{ fmtMetric(task.result.precision) }}</el-descriptions-item>
+              <el-descriptions-item label="Recall">{{ fmtMetric(task.result.recall) }}</el-descriptions-item>
+              <el-descriptions-item label="训练耗时">
+                {{ formatDuration(task.result.train_duration_minutes) }}
+              </el-descriptions-item>
+              <el-descriptions-item label="权重大小">{{ formatSize(task.result.weight_size_mb) }}</el-descriptions-item>
+              <el-descriptions-item label="模型参数量">
+                {{ readResultValue('model_parameters') }}
+              </el-descriptions-item>
+            </el-descriptions>
+          </template>
+
+          <div ref="chartRef" class="history-chart"></div>
+          <TaskArtifactPanel v-if="artifacts.length" title="任务产物" :artifacts="artifacts" />
+
+          <template v-if="task.status === 'failed' && task.error_message">
+            <el-alert type="error" :closable="false" show-icon style="margin-top: 12px">
+              {{ task.error_message }}
+            </el-alert>
+          </template>
         </template>
 
-        <div class="detail-section-title">任务结果详情</div>
-        <template v-if="task.status === 'completed' && task.result">
-          <el-descriptions :column="4" border size="small">
-            <el-descriptions-item label="Best Epoch">{{ readResultValue('best_epoch') }}</el-descriptions-item>
-            <el-descriptions-item label="mAP50">{{ fmtMetric(task.result.map50) }}</el-descriptions-item>
-            <el-descriptions-item label="mAP50-95">{{ fmtMetric(task.result.map50_95) }}</el-descriptions-item>
-            <el-descriptions-item label="Precision">{{ fmtMetric(task.result.precision) }}</el-descriptions-item>
-            <el-descriptions-item label="Recall">{{ fmtMetric(task.result.recall) }}</el-descriptions-item>
-            <el-descriptions-item label="训练耗时">{{ formatDuration(task.result.train_duration_minutes) }}</el-descriptions-item>
-            <el-descriptions-item label="权重大小">{{ formatSize(task.result.weight_size_mb) }}</el-descriptions-item>
-            <el-descriptions-item label="模型参数量">{{ readResultValue('model_parameters') }}</el-descriptions-item>
-          </el-descriptions>
-        </template>
-
-        <div ref="chartRef" class="history-chart"></div>
-
-        <TaskArtifactPanel v-if="artifacts.length" title="任务产物" :artifacts="artifacts" />
-
-        <template v-if="task.status === 'failed' && task.error_message">
-          <el-alert type="error" :closable="false" show-icon style="margin-top: 12px">
-            {{ task.error_message }}
-          </el-alert>
-        </template>
+        <TrainingLogPanel
+          :task-id="task.id"
+          :is-running="task.status === 'running'"
+          :rows="task.status === 'running' ? 18 : 10"
+        />
       </el-card>
     </template>
   </el-dialog>
@@ -91,9 +110,15 @@
 <script setup lang="ts">
 import { nextTick, ref, watch } from 'vue'
 import * as echarts from 'echarts'
-import type { Task, TaskArtifactItem, TaskHistoryPoint, TrainingDetailContext } from '@/types/task'
+import type {
+  Task,
+  TaskArtifactItem,
+  TaskHistoryPoint,
+  TrainingDetailContext,
+} from '@/types/task'
 import { resolveTaskStatusTag } from '@/utils/task'
 import TaskArtifactPanel from './TaskArtifactPanel.vue'
+import TrainingLogPanel from './TrainingLogPanel.vue'
 
 const props = defineProps<{
   visible: boolean
