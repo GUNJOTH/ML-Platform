@@ -124,3 +124,10 @@ POST        /api/v1/evaluation
 - 存储抽象：默认本地存储，预留扩展空间
 - 任务抽象：训练/评估任务通过统一任务模型管理
 - 框架适配：`backend/app/frameworks/` 下按训练框架扩展
+
+## 项目治理入口
+
+- [治理约定](./GOVERNANCE.md)
+- [贡献指南](./CONTRIBUTING.md)
+- [安全策略](./SECURITY.md)
+- Issue 与 Pull Request 请使用仓库模板，并记录实际验证证据。
