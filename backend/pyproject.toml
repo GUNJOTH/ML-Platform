@@ -7,7 +7,7 @@ dependencies = [
     "fastapi==0.115.6",
     "uvicorn[standard]==0.34.0",
     "sqlalchemy[asyncio]==2.0.36",
-    "psycopg[binary]==3.2.4",
+    "psycopg[binary]==3.3.5",
     "aiomysql==0.2.0",
     "alembic==1.14.1",
     "pydantic==2.10.4",
